@@ -32,7 +32,7 @@ if errorlevel 1 (
 
 echo Building Windows binary...
 call .venv\Scripts\activate.bat
-pyinstaller --onefile -w --add-data "assets;assets" --icon="assets/favicon.ico" -n dnotool __main__.py
+pyinstaller dnotool.spec
 
 set DIST_DIR=dist
 set TMP_DIR=%TEMP%\dnotool-release-%RANDOM%

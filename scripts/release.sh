@@ -29,7 +29,7 @@ fi
 
 echo "Building Linux/MOS binary..."
 source ./.venv/bin/activate
-pyinstaller --onefile -w --add-data "./assets:./assets" --icon="./assets/favicon.ico" -n dnotool __main__.py
+pyinstaller dnotool.spec
 
 TMPDIR=$(mktemp -d)
 trap "rm -rf ${TMPDIR}" EXIT
