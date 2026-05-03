@@ -1,4 +1,4 @@
-# dno-tool
+# dnotool
 
 Утилита для удалённого администрирования компьютеров под управлением МОС/ALT Linux и Windows по протоколу SSH.
 
@@ -18,13 +18,19 @@
 ### МОС / ALT Linux
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/xp9k/dno-tool/main/scripts/install.sh)
+bash <(curl -sL -H "Authorization: token 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" -H "Accept: application/vnd.github.v3.raw" https://api.github.com/repos/xp9k/dno-tool/contents/scripts/install.sh)
 ```
 
 ### Windows (PowerShell от имени администратора)
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; Invoke-RestMethod https://raw.githubusercontent.com/xp9k/dno-tool/main/scripts/install.ps1 | Invoke-Expression
+$t="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"; $h=@{Authorization="token $t";Accept="application/vnd.github.v3.raw"}; Invoke-WebRequest -Uri "https://api.github.com/repos/xp9k/dno-tool/contents/scripts/install.ps1" -Headers $h -OutFile install.ps1; .\install.ps1; Remove-Item install.ps1
+```
+
+## Удаление (МОС / ALT Linux)
+
+```bash
+sudo dnotool-uninstall.sh
 ```
 
 ## Лицензия
