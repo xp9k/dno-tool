@@ -50,4 +50,4 @@ fi
 echo ""
 echo "=== Установка завершена! ==="
 echo "Запуск из меню: DNOTool / DNOTool (Администратор)"
-echo "Удаление: sudo dnotool-uninstall.sh"
+echo "Удаление: /usr/local/bin/dnotool-uninstall.sh"
