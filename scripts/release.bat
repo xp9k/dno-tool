@@ -4,13 +4,13 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0.."
 
 if not exist ".env.tokens" (
-    echo Error: .env.tokens not found. Create it with GITHUB_TOKEN_WRITE=...
+    echo Ошибка: файл .env.tokens не найден. Создайте его с GITHUB_TOKEN_WRITE=...
     exit /b 1
 )
 set "GH_TOKEN="
 for /f "tokens=1,* delims==" %%a in ('findstr /B "GITHUB_TOKEN_WRITE=" .env.tokens') do set "GH_TOKEN=%%b"
 if not defined GH_TOKEN (
-    echo Error: GITHUB_TOKEN_WRITE not found in .env.tokens
+    echo Ошибка: GITHUB_TOKEN_WRITE не найден в .env.tokens
     exit /b 1
 )
 
@@ -22,15 +22,15 @@ set VERSION=%VERSION_RAW: =%
 set VERSION=%VERSION:"=%
 set TAG=v%VERSION%
 
-echo === Creating release %TAG% ===
+echo === Создание релиза %TAG% ===
 
 where gh >nul 2>&1
 if errorlevel 1 (
-    echo Error: gh CLI not found. Install: https://cli.github.com/
+    echo Ошибка: gh CLI не найден. Установите: https://cli.github.com/
     exit /b 1
 )
 
-echo Building Windows binary...
+echo Сборка бинарного файла Windows...
 call .venv\Scripts\activate.bat
 pyinstaller dnotool.spec
 
@@ -38,7 +38,7 @@ set DIST_DIR=dist
 set TMP_DIR=%TEMP%\dnotool-release-%RANDOM%
 mkdir "%TMP_DIR%"
 
-echo Packing Windows archive...
+echo Упаковка Windows-архива...
 set WIN_DIR=%TMP_DIR%\win_pack
 mkdir "%WIN_DIR%"
 copy "%DIST_DIR%\%BINARY_NAME%.exe" "%WIN_DIR%\" >nul
@@ -52,7 +52,7 @@ if exist "%DIST_DIR%\%BINARY_NAME%" (
 )
 
 if "!HAS_MOS!"=="1" (
-    echo Packing MOS archive...
+    echo Упаковка MOS-архива...
     set MOS_DIR=%TMP_DIR%\mos_pack
     mkdir "!MOS_DIR!"
     mkdir "!MOS_DIR!\policykit"
@@ -66,19 +66,19 @@ if "!HAS_MOS!"=="1" (
     powershell -Command "(Get-Content 'policykit\com.dnotool.desktop') -replace '^Version=.*', 'Version=%VERSION%' | Set-Content '!MOS_DIR!\policykit\com.dnotool.desktop'"
     set MOS_ARCHIVE=%DIST_DIR%\%BINARY_NAME%-%VERSION%-mos.zip
     powershell -Command "Compress-Archive -Path '!MOS_DIR!\*' -DestinationPath '!MOS_ARCHIVE!' -Force"
-    echo MOS archive created.
+    echo MOS-архив создан.
 ) else (
-    echo WARNING: Linux binary not found. MOS archive skipped.
+    echo ВНИМАНИЕ: Linux-бинарный файл не найден. MOS-архив пропущен.
 )
 
-echo Creating GitHub release %TAG%...
+echo Создание релиза %TAG% на GitHub...
 if "!HAS_MOS!"=="1" (
     gh release create %TAG% --repo %REPO% --title %TAG% --notes "Release %TAG%" "!MOS_ARCHIVE!" "%WIN_ARCHIVE%"
 ) else (
     gh release create %TAG% --repo %REPO% --title %TAG% --notes "Release %TAG%" "%WIN_ARCHIVE%"
 )
 
-echo Updating latest release tag...
+echo Обновление тега latest...
 gh release delete latest --repo %REPO% --yes 2>nul
 if "!HAS_MOS!"=="1" (
     gh release create latest --repo %REPO% --title latest --notes "Latest release (%TAG%)" "!MOS_ARCHIVE!" "%WIN_ARCHIVE%"
@@ -87,4 +87,4 @@ if "!HAS_MOS!"=="1" (
 )
 
 rmdir /s /q "%TMP_DIR%"
-echo === Release %TAG% created successfully! ===
+echo === Релиз %TAG% успешно создан! ===

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# install.sh — dnotool installer for Linux/MOS
-# Installs binary, policykit files, commands.json
-# Usage: bash <(curl -sL https://raw.githubusercontent.com/xp9k/dno-tool/main/scripts/install.sh)
+# install.sh — установка dnotool для Linux/MOS
+# Устанавливает бинарный файл, policykit, commands.json
+# Запуск: bash <(curl -sL -H "Authorization: token ТОКЕН" -H "Accept: application/vnd.github.v3.raw" https://api.github.com/repos/xp9k/dno-tool/contents/scripts/install.sh)
 
 set -euo pipefail
 
@@ -11,21 +11,21 @@ REPO="xp9k/dno-tool"
 BINARY_NAME="dnotool"
 CONFIG_DIR="${HOME}/.dnotool"
 
-echo "=== dnotool installer ==="
+echo "=== Установка dnotool ==="
 
 CURRENT_VERSION=""
 if command -v "${BINARY_NAME}" &>/dev/null; then
     CURRENT_VERSION=$("${BINARY_NAME}" --version 2>/dev/null || echo "")
-    echo "Current version: ${CURRENT_VERSION:-unknown}"
+    echo "Текущая версия: ${CURRENT_VERSION:-неизвестна}"
 fi
 
-echo "Fetching latest release info..."
+echo "Получение информации о последнем релизе..."
 
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 RELEASE_DATA=$(curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" "${API_URL}")
 
 if [ -z "${RELEASE_DATA}" ]; then
-    echo "Error: Could not fetch release info."
+    echo "Ошибка: не удалось получить информацию о релизе."
     exit 1
 fi
 
@@ -39,10 +39,10 @@ if [[ "${LATEST_VERSION}" == "latest" || ! "${LATEST_VERSION}" =~ ^[0-9]+\.[0-9]
     RELEASE_DATA=$(echo "${ALL_RELEASE_DATA}" | grep -A5 "\"tag_name\": \"v${LATEST_VERSION}\"")
 fi
 
-echo "Latest version: ${LATEST_VERSION}"
+echo "Последняя версия: ${LATEST_VERSION}"
 
 if [ -n "${CURRENT_VERSION}" ] && [ "${CURRENT_VERSION}" = "${LATEST_VERSION}" ]; then
-    echo "Already up to date (${LATEST_VERSION}). No update needed."
+    echo "Установлена последняя версия (${LATEST_VERSION}). Обновление не требуется."
     exit 0
 fi
 
@@ -51,26 +51,26 @@ ASSET_URL=$(echo "${RELEASE_DATA}" | grep '"url"' | grep -B1 "\"${ARCHIVE_NAME}\
 DOWNLOAD_URL=$(echo "${RELEASE_DATA}" | grep '"browser_download_url"' | grep "${ARCHIVE_NAME}" | head -1 | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/')
 
 if [ -z "${DOWNLOAD_URL}" ]; then
-    echo "Error: Could not find ${ARCHIVE_NAME} in the release assets."
+    echo "Ошибка: архив ${ARCHIVE_NAME} не найден в ресурсах релиза."
     exit 1
 fi
 
 TMPDIR=$(mktemp -d)
 trap "rm -rf ${TMPDIR}" EXIT
 
-echo "Downloading ${ARCHIVE_NAME}..."
+echo "Загрузка ${ARCHIVE_NAME}..."
 if [ -n "${ASSET_URL}" ]; then
     curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "${ASSET_URL}"
 else
     curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "${DOWNLOAD_URL}"
 fi
 
-echo "Extracting..."
+echo "Распаковка..."
 unzip -o "${TMPDIR}/${ARCHIVE_NAME}" -d "${TMPDIR}/extracted" >/dev/null
 
 EXTRACTED="${TMPDIR}/extracted"
 
-echo "Installing binary to /usr/local/bin..."
+echo "Установка бинарного файла в /usr/local/bin..."
 if [ -w /usr/local/bin ]; then
     cp "${EXTRACTED}/${BINARY_NAME}" /usr/local/bin/
     chmod +x /usr/local/bin/${BINARY_NAME}
@@ -79,47 +79,47 @@ else
     sudo chmod +x /usr/local/bin/${BINARY_NAME}
 fi
 
-echo "Installing PolicyKit files..."
+echo "Установка файлов PolicyKit..."
 POLICYKIT_DIR="${EXTRACTED}/policykit"
 if [ -d "${POLICYKIT_DIR}" ]; then
     if [ -f "${POLICYKIT_DIR}/com.dnotool.policy" ]; then
         sudo cp "${POLICYKIT_DIR}/com.dnotool.policy" /usr/share/polkit-1/actions/
-        echo "  Polkit policy installed."
+        echo "  Политика Polkit установлена."
     fi
     if [ -f "${POLICYKIT_DIR}/com.dnotool.pkexec.desktop" ]; then
         sudo cp "${POLICYKIT_DIR}/com.dnotool.pkexec.desktop" /usr/share/applications/
-        echo "  Desktop shortcut (admin) installed."
+        echo "  Ярлык (администратор) установлен."
     fi
     if [ -f "${POLICYKIT_DIR}/com.dnotool.desktop" ]; then
         sudo cp "${POLICYKIT_DIR}/com.dnotool.desktop" /usr/share/applications/
-        echo "  Desktop shortcut installed."
+        echo "  Ярлык приложения установлен."
     fi
     if [ -f "${POLICYKIT_DIR}/dnotool-admin" ]; then
         sudo cp "${POLICYKIT_DIR}/dnotool-admin" /usr/bin/
         sudo chmod +x /usr/bin/dnotool-admin
-        echo "  Admin wrapper installed."
+        echo "  Обёртка администратора установлена."
     fi
 fi
 
-echo "Installing commands.json..."
+echo "Установка commands.json..."
 mkdir -p "${CONFIG_DIR}"
 if [ ! -f "${CONFIG_DIR}/commands.json" ]; then
     cp "${EXTRACTED}/commands.json" "${CONFIG_DIR}/commands.json"
-    echo "  Installed commands.json to ${CONFIG_DIR}/"
+    echo "  commands.json установлен в ${CONFIG_DIR}/"
 else
-    echo "  commands.json already exists, keeping current."
+    echo "  commands.json уже существует, сохранён текущий."
 fi
 
-echo "Installing uninstall script..."
+echo "Установка скрипта удаления..."
 if [ -f "${EXTRACTED}/uninstall.sh" ]; then
     sudo cp "${EXTRACTED}/uninstall.sh" /usr/local/bin/dnotool-uninstall.sh
     sudo chmod +x /usr/local/bin/dnotool-uninstall.sh
-    echo "  Uninstall script: dnotool-uninstall.sh"
+    echo "  Скрипт удаления: dnotool-uninstall.sh"
 fi
 
 echo ""
-echo "=== dnotool ${LATEST_VERSION} installed successfully! ==="
-echo "Binary:   /usr/local/bin/dnotool"
-echo "Config:   ${CONFIG_DIR}/"
-echo "Polkit:   /usr/share/polkit-1/actions/com.dnotool.policy"
-echo "To uninstall: sudo dnotool-uninstall.sh"
+echo "=== dnotool ${LATEST_VERSION} успешно установлен! ==="
+echo "Бинарный файл: /usr/local/bin/dnotool"
+echo "Конфигурация:  ${CONFIG_DIR}/"
+echo "Polkit:        /usr/share/polkit-1/actions/com.dnotool.policy"
+echo "Удаление:      sudo dnotool-uninstall.sh"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Uninstall dnotool
+# Удаление dnotool
 
 set -euo pipefail
 
-echo "=== dnotool uninstaller ==="
+echo "=== Удаление dnotool ==="
 
 rm -f /usr/local/bin/dnotool
 rm -f /usr/bin/dnotool-admin
@@ -12,5 +12,5 @@ rm -f /usr/share/polkit-1/actions/com.dnotool.policy
 rm -f /usr/share/applications/com.dnotool.pkexec.desktop
 rm -f /usr/share/applications/com.dnotool.desktop
 
-echo "=== dnotool uninstalled! ==="
-echo "Config ~/.dnotool preserved. Remove manually: rm -rf ~/.dnotool"
+echo "=== dnotool удалён! ==="
+echo "Конфигурация ~/.dnotool сохранена. Для удаления: rm -rf ~/.dnotool"

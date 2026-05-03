@@ -1,14 +1,14 @@
-# install.ps1 — dnotool downloader for Windows
-# Downloads the latest release archive to the Downloads folder
+# install.ps1 — загрузчик dnotool для Windows
+# Скачивает архив последнего релиза в папку "Загрузки"
 
 $Token = "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"
 
 $Repo = "xp9k/dno-tool"
 $BinaryName = "dnotool"
 
-Write-Host "=== dnotool downloader ===" -ForegroundColor Cyan
+Write-Host "=== Загрузка dnotool ===" -ForegroundColor Cyan
 
-Write-Host "Fetching latest release info..."
+Write-Host "Получение информации о последнем релизе..."
 
 $Headers = @{
     "User-Agent" = "dnotool-updater"
@@ -19,7 +19,7 @@ $ApiUrl = "https://api.github.com/repos/$Repo/releases/latest"
 try {
     $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -ErrorAction Stop
 } catch {
-    Write-Host "Error: Could not fetch release info: $_" -ForegroundColor Red
+    Write-Host "Ошибка: не удалось получить информацию о релизе: $_" -ForegroundColor Red
     exit 1
 }
 
@@ -35,13 +35,13 @@ if ($LatestVersion -eq "latest" -or $LatestVersion -notmatch '^\d+\.\d+\.\d+$') 
     $Release = $LatestRelease
 }
 
-Write-Host "Latest version: $LatestVersion"
+Write-Host "Последняя версия: $LatestVersion"
 
 $ArchiveName = "$BinaryName-$LatestVersion-windows.zip"
 $Asset = $Release.assets | Where-Object { $_.name -eq $ArchiveName } | Select-Object -First 1
 
 if (-not $Asset) {
-    Write-Host "Error: Could not find $ArchiveName in the release assets." -ForegroundColor Red
+    Write-Host "Ошибка: архив $ArchiveName не найден в ресурсах релиза." -ForegroundColor Red
     exit 1
 }
 
@@ -49,7 +49,7 @@ $DownloadUrl = $Asset.url
 $DownloadsDir = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
 $DestPath = Join-Path $DownloadsDir $ArchiveName
 
-Write-Host "Downloading $ArchiveName to $DownloadsDir..."
+Write-Host "Загрузка $ArchiveName в папку $DownloadsDir..."
 
 try {
     Invoke-WebRequest -Uri $DownloadUrl -Headers @{
@@ -58,13 +58,13 @@ try {
         "User-Agent" = "dnotool-updater"
     } -OutFile $DestPath
 } catch {
-    Write-Host "Error: Download failed: $_" -ForegroundColor Red
+    Write-Host "Ошибка: загрузка не удалась: $_" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
-Write-Host "=== Download complete! ===" -ForegroundColor Green
-Write-Host "File saved: $DestPath"
-Write-Host "Extract the archive and run dnotool.exe" -ForegroundColor Yellow
+Write-Host "=== Загрузка завершена! ===" -ForegroundColor Green
+Write-Host "Файл сохранён: $DestPath"
+Write-Host "Распакуйте архив и запустите dnotool.exe" -ForegroundColor Yellow
 
 Start-Process "explorer.exe" $DownloadsDir

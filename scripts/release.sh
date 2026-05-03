@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_ROOT}/.env.tokens"
 if [ ! -f "${ENV_FILE}" ]; then
-    echo "Error: ${ENV_FILE} not found. Create it with GITHUB_TOKEN_WRITE=..."
+    echo "Ошибка: файл ${ENV_FILE} не найден. Создайте его с GITHUB_TOKEN_WRITE=..."
     exit 1
 fi
 GH_TOKEN=$(grep "^GITHUB_TOKEN_WRITE=" "${ENV_FILE}" | head -1 | cut -d= -f2-)
@@ -20,21 +20,21 @@ BINARY_NAME="dnotool"
 VERSION=$(grep '__version__' src/__init__.py | sed "s/.*=.*['\"]//;s/['\"]//")
 TAG="v${VERSION}"
 
-echo "=== Creating release ${TAG} ==="
+echo "=== Создание релиза ${TAG} ==="
 
 if ! command -v gh &>/dev/null; then
-    echo "Error: gh CLI not found. Install: https://cli.github.com/"
+    echo "Ошибка: gh CLI не найден. Установите: https://cli.github.com/"
     exit 1
 fi
 
-echo "Building Linux/MOS binary..."
+echo "Сборка бинарного файла Linux/MOS..."
 source ./.venv/bin/activate
 pyinstaller dnotool.spec
 
 TMPDIR=$(mktemp -d)
 trap "rm -rf ${TMPDIR}" EXIT
 
-echo "Packing MOS archive..."
+echo "Упаковка MOS-архива..."
 MOS_DIR="${TMPDIR}/mos_pack"
 mkdir -p "${MOS_DIR}/policykit"
 cp "./dist/${BINARY_NAME}" "${MOS_DIR}/"
@@ -48,21 +48,21 @@ MOS_ARCHIVE="${TMPDIR}/${BINARY_NAME}-${VERSION}-mos.zip"
 (cd "${MOS_DIR}" && zip -r "${MOS_ARCHIVE}" .)
 mv "${MOS_ARCHIVE}" "./dist/"
 
-echo "Packing Windows archive..."
+echo "Упаковка Windows-архива..."
 WIN_DIR="${TMPDIR}/win_pack"
 mkdir -p "${WIN_DIR}"
 if [ -f "./dist/${BINARY_NAME}.exe" ]; then
     cp "./dist/${BINARY_NAME}.exe" "${WIN_DIR}/"
     cp commands.json "${WIN_DIR}/"
 else
-    echo "WARNING: ${BINARY_NAME}.exe not found. Windows archive skipped."
+    echo "ВНИМАНИЕ: ${BINARY_NAME}.exe не найден. Windows-архив пропущен."
 fi
 WIN_ARCHIVE="./dist/${BINARY_NAME}-${VERSION}-windows.zip"
 if [ -f "./dist/${BINARY_NAME}.exe" ]; then
     (cd "${WIN_DIR}" && zip -r "${WIN_ARCHIVE}" .)
 fi
 
-echo "Creating GitHub release ${TAG}..."
+echo "Создание релиза ${TAG} на GitHub..."
 if [ -f "${WIN_ARCHIVE}" ]; then
     gh release create "${TAG}" \
         --repo "${REPO}" \
@@ -78,7 +78,7 @@ else
         "./dist/${BINARY_NAME}-${VERSION}-mos.zip"
 fi
 
-echo "Updating latest release tag..."
+echo "Обновление тега latest..."
 gh release delete latest --repo "${REPO}" --yes 2>/dev/null || true
 if [ -f "${WIN_ARCHIVE}" ]; then
     gh release create latest \
@@ -95,4 +95,4 @@ else
         "./dist/${BINARY_NAME}-${VERSION}-mos.zip"
 fi
 
-echo "=== Release ${TAG} created successfully! ==="
+echo "=== Релиз ${TAG} успешно создан! ==="
