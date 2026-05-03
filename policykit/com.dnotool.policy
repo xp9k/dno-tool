@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>xp9k</vendor>
+  <vendor_url>https://github.com/xp9k/dno-tool</vendor_url>
+
+  <action id="com.dnotool.run-admin">
+    <description xml:lang="ru">Запуск DNOTool с правами администратора</description>
+    <message xml:lang="ru">Требуется аутентификация для запуска DNOTool с правами администратора</message>
+    <icon_name>dnotool</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/dnotool</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+    <annotate key="org.freedesktop.policykit.exec.env_keep">DISPLAY XAUTHORITY XDG_RUNTIME_DIR HOME XDG_CONFIG_HOME QT_QPA_PLATFORMTHEME KDE_SESSION_VERSION</annotate>
+  </action>
+
+</policyconfig>

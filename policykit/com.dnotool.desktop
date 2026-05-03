@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=0.3.6
+Type=Application
+Name=DNOTool
+Name[ru]=DNOTool
+Comment=Network device management tool
+Comment[ru]=Инструмент управления сетевыми устройствами
+Exec=dnotool
+Icon=dnotool
+Terminal=false
+Categories=System;Network;Settings;
+Keywords=network;ssh;sftp;ping;
+StartupNotify=true

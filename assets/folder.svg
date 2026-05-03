@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="folderBack" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F5C842"/>
+      <stop offset="100%" stop-color="#E1A91B"/>
+    </linearGradient>
+    <linearGradient id="folderFront" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FCE38D"/>
+      <stop offset="100%" stop-color="#F5C842"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Folder back part -->
+  <path d="M24 42 L24 96 Q24 102 30 102 L98 102 Q104 102 104 96 L104 50 Q104 44 98 44 L56 44 L48 32 L30 32 Q24 32 24 38Z"
+        fill="url(#folderBack)" filter="url(#shadow)"/>
+
+  <!-- Folder front part -->
+  <path d="M12 58 L12 106 Q12 114 20 114 L108 114 Q116 114 116 106 L116 58 Q116 50 108 50 L20 50 Q12 50 12 58Z"
+        fill="url(#folderFront)" filter="url(#shadow)"/>
+
+  <!-- Inside shadow detail -->
+  <path d="M12 58 L116 58 L108 50 L20 50Z" fill="#C79415" opacity="0.2"/>
+
+  <!-- Highlight line -->
+  <path d="M20 52 L108 52" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+</svg>

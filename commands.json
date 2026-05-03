@@ -1,0 +1,3889 @@
+[
+    {
+        "Система": [
+            {
+                "Пакеты": [
+                    {
+                        "dnf": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf history list",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает историю операций dnf",
+                                "name": "История операций",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf list recent",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает недавно установленные пакеты",
+                                "name": "Недавние пакеты",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf list installed",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает все установленные пакеты",
+                                "name": "Установленные пакеты",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf list available",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает доступные пакеты",
+                                "name": "Доступные пакеты",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf search %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Ищет пакеты по названию",
+                                "name": "Поиск пакетов",
+                                "params": [
+                                    "Название пакета"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf info %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает информацию о пакете",
+                                "name": "Информация о пакете",
+                                "params": [
+                                    "Название пакета"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf repoquery --whatrequires %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает, какие пакеты зависят от указанного",
+                                "name": "Зависимости пакета",
+                                "params": [
+                                    "Название пакета"
+                                ],
+                                "timeout": 30
+                            }
+                        ]
+                    },
+                    {
+                        "RPM": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "rpm -qa | sort",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает все RPM-пакеты",
+                                "name": "Все RPM-пакеты",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "rpm -qi %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает информацию об установленном RPM-пакете",
+                                "name": "Информация RPM",
+                                "params": [
+                                    "Название пакета"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "rpm -ql %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает файлы пакета",
+                                "name": "Файлы пакета RPM",
+                                "params": [
+                                    "Название пакета"
+                                ],
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Управление": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf install -y %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Устанавливает пакеты",
+                                "name": "Установить пакеты",
+                                "params": [
+                                    "Список пакетов"
+                                ],
+                                "timeout": 600
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf remove -y %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удаляет пакеты",
+                                "name": "Удалить пакеты",
+                                "params": [
+                                    "Список пакетов"
+                                ],
+                                "timeout": 60
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "wget -O /tmp/package.rpm %param1% && rpm -ivh /tmp/package.rpm && rm -f /tmp/package.rpm",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Загружает и устанавливает RPM пакет по указанному URL",
+                                "name": "Установить RPM из URL",
+                                "params": [
+                                    "URL RPM пакета"
+                                ],
+                                "timeout": 120
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": ".\\packages\\%param1%.rpm::%login%@%hostname%:/tmp/%param1%.rpm",
+                                        "type": "sftp"
+                                    },
+                                    {
+                                        "text": "rpm -ivh /tmp/%param1%.rpm && rm -f /tmp/%param1%.rpm",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Загружает RPM файл через SFTP и устанавливает его",
+                                "name": "Загрузить и установить RPM",
+                                "params": [
+                                    "Имя RPM файла (без .rpm)"
+                                ],
+                                "timeout": 180
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf upgrade -y %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Обновляет указанные пакеты",
+                                "name": "Обновить пакеты",
+                                "params": [
+                                    "Список пакетов"
+                                ],
+                                "timeout": 300
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf --refresh upgrade -y",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Обновляет все пакеты системы",
+                                "name": "Обновление системы",
+                                "timeout": 3600
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf --refresh distro-sync -y",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Синхронизирует версию дистрибутива",
+                                "name": "Синхронизация дистрибутива",
+                                "timeout": 3600
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dnf clean all",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Очищает кэш пакетного менеджера",
+                                "name": "Очистка кэша dnf",
+                                "timeout": 30
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "Службы": [
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl list-units --type=service --state=running",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает активные службы",
+                        "name": "Активные службы",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl list-units --type=service --state=failed",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает упавшие службы",
+                        "name": "Упавшие службы",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl list-unit-files --type=service | grep enabled",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает включённые службы",
+                        "name": "Включённые службы",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl status %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает статус службы",
+                        "name": "Статус службы",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl start %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Запускает службу",
+                        "name": "Запустить службу",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl stop %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Останавливает службу",
+                        "name": "Остановить службу",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl restart %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Перезапускает службу",
+                        "name": "Перезапустить службу",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl enable %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Включает службу в автозагрузку",
+                        "name": "Включить в автозагрузку",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl disable %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Отключает службу из автозагрузки",
+                        "name": "Отключить из автозагрузки",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "journalctl -u %param1% -n 50 --no-pager",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает логи службы",
+                        "name": "Логи службы",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "journalctl -u %param1% -f -n 100 --no-pager",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает логи службы в реальном времени",
+                        "name": "Логи службы (live)",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 30
+                    }
+                ]
+            },
+            {
+                "Выключение": [
+                    {
+                        "commands": [
+                            {
+                                "text": "shutdown -h +1",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Выключает систему через 1 минуту",
+                        "name": "Выключение",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "reboot",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Перезагружает систему",
+                        "name": "Перезагрузка",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "shutdown -r +1",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Перезагрузка через 1 минуту",
+                        "name": "Перезагрузка (отложенная)",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "shutdown -c",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Отменяет запланированное выключение",
+                        "name": "Отменить выключение",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "Время и NTP": [
+                    {
+                        "commands": [
+                            {
+                                "text": "timedatectl",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Текущие настройки времени и часового пояса",
+                        "name": "Статус времени",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "timedatectl set-timezone %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Установка часового пояса",
+                        "name": "Установить часовой пояс",
+                        "params": [
+                            "Часовой пояс (Europe/Moscow)"
+                        ],
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "timedatectl set-ntp true",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Включить NTP синхронизацию",
+                        "name": "Включить NTP",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "timedatectl set-ntp false",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Отключить NTP синхронизацию",
+                        "name": "Отключить NTP",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "chronyc sources",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Источники времени chrony",
+                        "name": "Chrony источники",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "chronyc tracking",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус синхронизации chrony",
+                        "name": "Chrony статус",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "date -s \"%param1%\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Установка системного времени вручную",
+                        "name": "Установить время",
+                        "params": [
+                            "Время (YYYY-MM-DD HH:MM:SS)"
+                        ],
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "hwclock --systohc",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Синхронизация аппаратных часов",
+                        "name": "Синхронизировать часы",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Пользователи и безопасность": [
+            {
+                "Пользователи": [
+                    {
+                        "Информация": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "whoami",
+                                        "type": "ssh"
+                                    },
+                                    {
+                                        "text": "id",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает имя текущего пользователя и его ID.",
+                                "name": "Текущий пользователь",
+                                "timeout": 20
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "getent passwd | cut -d: -f1",
+                                        "type": "ssh"
+                                    },
+                                    {
+                                        "text": "echo \"online: $(who)\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает список пользователей в системе.",
+                                "name": "Список пользователей",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "# Получаем список уникальных пользователей, выполнивших вход\nusers=$(who | awk '{print $1}' | sort -u)\n\nfor user in $users; do\n    if [ \"$user\" = \"root\" ]; then\n        continue\n    fi\n    user_info=$(grep \"^$user:\" /etc/passwd 2>/dev/null)\n    echo -e \"Информация о пользователе $user:\"\n    if [ -n \"$user_info\" ]; then\n        echo \"Имя пользователя: $(echo $user_info | cut -d: -f1)\"\n        echo \"UID: $(echo $user_info | cut -d: -f3)\"\n        echo \"GID: $(echo $user_info | cut -d: -f4)\"\n        echo \"Полное имя/описание: $(echo $user_info | cut -d: -f5)\"\n        echo \"Домашний каталог: $(echo $user_info | cut -d: -f6)\"\n        echo \"Оболочка входа: $(echo $user_info | cut -d: -f7)\"\n    else\n        echo \"Информация не найдена в /etc/passwd\\n\"\n    fi\ndone",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Подробная информация о пользователях онлайн",
+                                "name": "Подробная информация о пользователях онлайн",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "getent group | cut -d: -f1 | sort",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает все группы в системе",
+                                "name": "Список групп",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "groups %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показывает группы, в которых состоит пользователь",
+                                "name": "Группы пользователя",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Управление": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "user=%param1%\npassword=%param2%\nuseradd \"$user\"\nchpasswd<<<\"$user:$password\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Создаёт нового пользователя с паролем",
+                                "name": "Создать пользователя",
+                                "params": [
+                                    "Имя пользователя",
+                                    "Пароль"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "user=%param1%\nuserdel -rf $user\nrm -rfv /home/$user",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удаляет пользователя и его домашний каталог",
+                                "name": "Удалить пользователя",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "chpasswd<<<\"%param1%:%param2%\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Сбрасывает пароль пользователя",
+                                "name": "Сменить пароль",
+                                "params": [
+                                    "Логин",
+                                    "Пароль"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "usermod -aG %param2% %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Добавляет пользователя в группу",
+                                "name": "Добавить пользователя в группу",
+                                "params": [
+                                    "Имя пользователя",
+                                    "Группа"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "usermod -g %param2% %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Изменяет основную группу пользователя",
+                                "name": "Изменить основную группу",
+                                "params": [
+                                    "Имя пользователя",
+                                    "Группа"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "passwd -l %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Блокирует учётную запись пользователя",
+                                "name": "Заблокировать пользователя",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "passwd -u %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Разблокирует учётную запись пользователя",
+                                "name": "Разблокировать пользователя",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "usermod -s %param2% %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Изменяет оболочку входа пользователя",
+                                "name": "Изменить оболочку пользователя",
+                                "params": [
+                                    "Имя пользователя",
+                                    "Оболочка (например, /bin/bash)"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "groupadd %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Создаёт новую группу",
+                                "name": "Создать группу",
+                                "params": [
+                                    "Имя группы"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "groupdel %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удаляет группу",
+                                "name": "Удалить группу",
+                                "params": [
+                                    "Имя группы"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "USERNAME=\"%param1%\"\n\nif ! id \"$USERNAME\" &>/dev/null; then\n    echo \"Пользователь $USERNAME не существует\"\n    exit 1\nfi\n\nUSER_UID=$(id -u \"$USERNAME\")\nUSER_GID=$(id -g \"$USERNAME\")\nHOME_DIR=$(getent passwd \"$USERNAME\" | cut -d: -f6)\nUSER_SHELL=$(getent passwd \"$USERNAME\" | cut -d: -f7)\nPASS_HASH=$(grep \"^$USERNAME:\" /etc/shadow | cut -d: -f2)\n\necho \"Завершаем все процессы пользователя $USERNAME...\"\n\n# Получаем PID всех процессов пользователя, кроме текущего скрипта\nPIDS=$(pgrep -u \"$USERNAME\" | grep -v \"^$$\\$\")\n\nif [ -n \"$PIDS\" ]; then\n    echo \"Принудительно завершаем процессы: $PIDS\"\n    kill -9 $PIDS\nfi\n\nsleep 1  # небольшая пауза, чтобы процессы завершились\n\necho \"Пересоздание пользователя $USERNAME с UID $USER_UID\"\n\n# Удаляем пользователя с домашней директорией\nuserdel -r \"$USERNAME\" || exit 1\n\n# Если группы нет — создаём её\nif ! getent group \"$USER_GID\" >/dev/null; then\n    echo \"Создаём группу $USERNAME с GID $USER_GID\"\n    groupadd -g \"$USER_GID\" \"$USERNAME\" || exit 1\nfi\n\n# Создаём пользователя заново\nuseradd -u \"$USER_UID\" -g \"$USER_GID\" -d \"$HOME_DIR\" -s \"$USER_SHELL\" -m \"$USERNAME\" || exit 1\n\n# Восстанавливаем пароль\nusermod -p \"$PASS_HASH\" \"$USERNAME\"\n\necho \"Готово\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "",
+                                "name": "Пересоздание пользователя с сохранением ID",
+                                "params": [
+                                    "Логин"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "USERNAME=\"%param1%\"\n\nif [ -z \"$USERNAME\" ]; then\n    echo \"Использование: $0 username\"\n    exit 1\nfi\n\n# Проверка существования пользователя\nif ! id \"$USERNAME\" &>/dev/null; then\n    echo \"Пользователь $USERNAME не существует\"\n    exit 1\nfi\n\n# Сохраняем только пароль\nPASS_HASH=$(grep \"^$USERNAME:\" /etc/shadow | cut -d: -f2)\n\necho \"Завершаем все процессы пользователя $USERNAME...\"\n\n# Принудительное завершение всех процессов пользователя\nPIDS=$(pgrep -u \"$USERNAME\" | grep -v \"^$$\\$\") \nif [ -n \"$PIDS\" ]; then\n    echo \"Принудительно завершаем процессы: $PIDS\"\n    kill -9 $PIDS\n    sleep 1\nfi\n\necho \"Удаляем пользователя $USERNAME вместе с домашним каталогом...\"\nuserdel -r \"$USERNAME\" || exit 1\n\n# Удаляем группу с таким же именем (если есть)\nif getent group \"$USERNAME\" >/dev/null; then\n    groupdel \"$USERNAME\"\nfi\n\necho \"Создаём нового пользователя $USERNAME с новым UID/GID и домашним каталогом...\"\nuseradd -m \"$USERNAME\" || exit 1\n\n# Восстанавливаем пароль\nusermod -p \"$PASS_HASH\" \"$USERNAME\"\n\necho \"Пользователь $USERNAME полностью пересоздан. Пароль сохранён, остальное сброшено.\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "",
+                                "name": "Пересоздание пользователя c удалением домашней папки",
+                                "params": [
+                                    "Логин"
+                                ],
+                                "timeout": 30
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "Авторизация и домен": [
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf in -y mos-auth-core mos-auth-folders\nmos-auth-config enable",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Устанавливает авторизацию MOS.RU",
+                        "name": "Установить авторизацию MOS.RU",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "mos-auth-config disable\ndnf rm -y mos-auth-core mos-auth-folders",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Удаляет авторизацию MOS.RU",
+                        "name": "Удалить авторизацию MOS.RU",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf in -y sssd adcli realmd\nrealm discover %param1%\nrealm join -U Administrator %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Вводит компьютер в домен Active Directory",
+                        "name": "Войти в домен AD",
+                        "params": [
+                            "Домен (например, example.local)"
+                        ],
+                        "timeout": 120
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "realm leave %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Выводит компьютер из домена",
+                        "name": "Выйти из домена",
+                        "params": [
+                            "Домен"
+                        ],
+                        "timeout": 60
+                    }
+                ]
+            },
+            {
+                "Безопасность": [
+                    {
+                        "Аудит входов": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "last -n 20",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Последние входы в систему",
+                                "name": "История входов",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "lastb -n 20",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Неудачные попытки входа",
+                                "name": "Неудачные входы",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "who",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Кто сейчас в системе",
+                                "name": "Пользователи онлайн",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "w",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Кто в системе и чем занят",
+                                "name": "Активность пользователей",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "faillock --user %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Неудачные попытки входа пользователя",
+                                "name": "faillock пользователя",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "faillock --user %param1% --reset",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Сброс блокировки пользователя",
+                                "name": "Сброс faillock",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Аудит системы": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ps -ef | grep ssh",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "SSH сессии",
+                                "name": "SSH сессии",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "grep -i \"failed\" /var/log/secure | tail -50",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Ошибки аутентификации",
+                                "name": "Ошибки входа",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ausearch -m user_login -ts today",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Входы в систему за сегодня (audit)",
+                                "name": "audit входы",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ausearch -m USER_LOGIN,USER_AUTH -ts recent",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Аудит аутентификации пользователей",
+                                "name": "Аудит аутентификации",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "aureport --auth --summary -i",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Сводный отчет по аутентификации",
+                                "name": "Отчет аутентификации",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ausearch -k %param1% -ts recent",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Поиск в audit log по ключу",
+                                "name": "Audit по ключу",
+                                "params": [
+                                    "Ключ поиска"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cat /etc/audit/auditd.conf",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Конфигурация auditd",
+                                "name": "Конфиг auditd",
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "SELinux": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "getenforce",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Статус SELinux",
+                                "name": "SELinux статус",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "sestatus",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Подробный статус SELinux",
+                                "name": "SELinux детально",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "setenforce 1",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Включить SELinux (enforcing)",
+                                "name": "SELinux включить",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "setenforce 0",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Отключить SELinux (permissive)",
+                                "name": "SELinux permissive",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ausearch -m avc -ts recent",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "SELinux denied события",
+                                "name": "SELinux denied",
+                                "timeout": 20
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cat /etc/selinux/config",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Конфигурация SELinux",
+                                "name": "SELinux конфиг",
+                                "timeout": 10
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "SSH": [
+                    {
+                        "Информация": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cat /etc/ssh/sshd_config | grep -v \"^#\" | grep -v \"^$\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Текущая конфигурация SSH сервера",
+                                "name": "Конфиг SSH",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ss -tunap | grep sshd",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Активные SSH соединения",
+                                "name": "SSH соединения",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cat /var/log/secure | grep sshd | tail -30",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Последние SSH события",
+                                "name": "SSH логи",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cat ~/.ssh/authorized_keys 2>/dev/null || echo \"Файл не найден\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Показать авторизованные SSH ключи",
+                                "name": "SSH ключи пользователя",
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Настройка": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "systemctl restart sshd",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Перезапуск SSH сервера",
+                                "name": "Перезапуск SSH",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "sed -i 's/#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && systemctl restart sshd",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Запретить вход root по SSH",
+                                "name": "Запретить root SSH",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && systemctl restart sshd",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Разрешить вход root по SSH",
+                                "name": "Разрешить root SSH",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "sed -i 's/#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && systemctl restart sshd",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Отключить аутентификацию по паролю (только ключи)",
+                                "name": "SSH только ключи",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "sed -i 's/#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && systemctl restart sshd",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Включить аутентификацию по паролю",
+                                "name": "SSH пароли включить",
+                                "timeout": 15
+                            }
+                        ]
+                    },
+                    {
+                        "Ключи": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo \"%param1%\" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Добавить SSH ключ пользователю",
+                                "name": "Добавить SSH ключ",
+                                "params": [
+                                    "Публичный SSH ключ"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "rm -f ~/.ssh/authorized_keys",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удалить все SSH ключи пользователя",
+                                "name": "Удалить SSH ключи",
+                                "timeout": 10
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Мониторинг": [
+            {
+                "Ресурсы": [
+                    {
+                        "commands": [
+                            {
+                                "text": "uptime",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает время работы и нагрузку",
+                        "name": "Время работы",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "free -h",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает использование памяти",
+                        "name": "Использование памяти",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "df -h",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает использование дискового пространства",
+                        "name": "Дисковое пространство",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "df -i",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает использование inode",
+                        "name": "Inode",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "top -bn1 | head -20",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает процессы по потреблению CPU",
+                        "name": "Топ процессов (CPU)",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ps aux --sort=-%mem | head -20",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает процессы по потреблению памяти",
+                        "name": "Топ процессов (RAM)",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /proc/cpuinfo | grep -E 'model name|cpu cores|processor'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает информацию о процессоре",
+                        "name": "Информация о CPU",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "lscpu",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Подробная информация о CPU",
+                        "name": "lscpu",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "vmstat 1 5",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статистика виртуальной памяти (5 секунд)",
+                        "name": "vmstat",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "iostat -x 1 3",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статистика ввода-вывода",
+                        "name": "iostat",
+                        "timeout": 15
+                    }
+                ]
+            },
+            {
+                "Дисковая подсистема": [
+                    {
+                        "commands": [
+                            {
+                                "text": "lsblk",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает блочные устройства",
+                        "name": "Блочные устройства",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "fdisk -l",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает таблицу разделов",
+                        "name": "Разделы диска",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "du -sh /home/*",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает размер домашних каталогов",
+                        "name": "Размер /home",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "find / -type f -size +100M 2>/dev/null | head -20",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Ищет файлы больше 100МБ",
+                        "name": "Большие файлы (>100МБ)",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "du -x / | sort -rn | head -20",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает самые большие директории",
+                        "name": "Топ директорий по размеру",
+                        "timeout": 120
+                    }
+                ]
+            },
+            {
+                "Логи": [
+                    {
+                        "commands": [
+                            {
+                                "text": "journalctl -n 100 --no-pager",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Последние 100 записей системного журнала",
+                        "name": "Системный журнал",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "journalctl -p err -n 50 --no-pager",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Последние ошибки (priority: err)",
+                        "name": "Ошибки системы",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "journalctl --since today --no-pager",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Логи за сегодня",
+                        "name": "Логи за сегодня",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "journalctl --since yesterday --no-pager",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Логи за вчера",
+                        "name": "Логи за вчера",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "tail -n 100 /var/log/messages",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Последние записи /var/log/messages",
+                        "name": "/var/log/messages",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "tail -n 100 /var/log/secure",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Последние записи безопасности",
+                        "name": "/var/log/secure",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dmesg | tail -50",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Сообщения ядра (последние 50)",
+                        "name": "dmesg",
+                        "timeout": 15
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Сеть": [
+            {
+                "Проверка связи": [
+                    {
+                        "commands": [
+                            {
+                                "text": "ping -c 4 ya.ru",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка связи с ya.ru",
+                        "name": "Пинг ya.ru",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ping -c 4 8.8.8.8",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка связи с Google DNS",
+                        "name": "Пинг 8.8.8.8",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ping -c 4 %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка связи с указанным хостом",
+                        "name": "Пинг хоста",
+                        "params": [
+                            "Хост/IP"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "mtr -rwc 10 %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Трассировка с диагностикой",
+                        "name": "MTR трассировка",
+                        "params": [
+                            "Хост/IP"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "traceroute %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Трассировка маршрута",
+                        "name": "traceroute",
+                        "params": [
+                            "Хост/IP"
+                        ],
+                        "timeout": 60
+                    }
+                ]
+            },
+            {
+                "Интерфейсы": [
+                    {
+                        "commands": [
+                            {
+                                "text": "ip addr show",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о сетевых интерфейсах",
+                        "name": "Сетевые интерфейсы",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ip route show",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Таблица маршрутизации",
+                        "name": "Таблица маршрутизации",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ip neigh show",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "ARP-таблица",
+                        "name": "ARP-таблица",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection show",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Список подключений NetworkManager",
+                        "name": "Подключения NM",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli device status",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус устройств NetworkManager",
+                        "name": "Устройства NM",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /etc/resolv.conf",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "DNS настройки",
+                        "name": "DNS настройки",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection down \"%param1%\" && nmcli connection up \"%param1%\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Переподключает соединение",
+                        "name": "Переподключить соединение",
+                        "params": [
+                            "Имя соединения"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection down 'Проводное соединение 1' && nmcli connection modify 'Проводное соединение 1' ipv4.ignore-auto-dns yes ipv4.dns '10.89.87.63,10.89.87.1' && nmcli connection up 'Проводное соединение 1'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Установка ДИТ-овских dns",
+                        "params": [],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection down '%param1%' && nmcli connection modify '%param1%' ipv4.ignore-auto-dns yes ipv4.dns '%param2%,%param3%' && nmcli connection up '%param1%'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Установка ДНС в интерфейс",
+                        "params": [
+                            "Интерфейс",
+                            "ДНС1",
+                            "ДНС2"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection modify '%param1%' ipv4.method auto ipv4.dns '' ipv4.ignore-auto-dns no && nmcli connection up '%param1%'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Сброс настроек интерфейса",
+                        "params": [
+                            "Интерфейс"
+                        ],
+                        "timeout": 30
+                    }
+                ]
+            },
+            {
+                "WiFi": [
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli device wifi list",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Список доступных WiFi сетей",
+                        "name": "WiFi список",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection show | grep -i wifi",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Сохраненные WiFi подключения",
+                        "name": "WiFi сохраненные",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli device wifi connect \"%param1%\" password \"%param2%\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Подключиться к WiFi сети",
+                        "name": "WiFi подключиться",
+                        "params": [
+                            "SSID сети",
+                            "Пароль"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection delete \"%param1%\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Удалить сохраненное WiFi подключение",
+                        "name": "WiFi удалить",
+                        "params": [
+                            "SSID сети"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nmcli connection modify \"%param1%\" wifi.cloned-mac-address %param2%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Изменить MAC-адрес для WiFi",
+                        "name": "WiFi MAC",
+                        "params": [
+                            "SSID сети",
+                            "MAC (random/permanent/xx:xx:xx:xx:xx:xx)"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "iwconfig",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о беспроводных интерфейсах",
+                        "name": "iwconfig",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "iwlist scanning 2>/dev/null | grep -E \"(Cell|ESSID|Quality)\" | head -20",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Сканирование WiFi сетей (iwlist)",
+                        "name": "WiFi сканирование",
+                        "timeout": 20
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null | grep -E \"(id|uuid|ssid)\" | head -20",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показать системные WiFi подключения",
+                        "name": "WiFi системные",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "Диагностика": [
+                    {
+                        "commands": [
+                            {
+                                "text": "ss -tulpn",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает открытые порты и слушающие службы",
+                        "name": "Открытые порты",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "netstat -tulpn 2>/dev/null || ss -tulpn",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Альтернатива ss для старых систем",
+                        "name": "netstat",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dig %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "DNS запрос",
+                        "name": "dig",
+                        "params": [
+                            "Домен"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "nslookup %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "DNS запрос (nslookup)",
+                        "name": "nslookup",
+                        "params": [
+                            "Домен"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "host %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "DNS запрос (host)",
+                        "name": "host",
+                        "params": [
+                            "Домен"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "curl -I %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка HTTP заголовков",
+                        "name": "curl заголовки",
+                        "params": [
+                            "URL"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "wget --spider %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка доступности URL",
+                        "name": "wget проверка",
+                        "params": [
+                            "URL"
+                        ],
+                        "timeout": 30
+                    }
+                ]
+            },
+            {
+                "Firewall": [
+                    {
+                        "commands": [
+                            {
+                                "text": "firewall-cmd --state",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус firewall",
+                        "name": "Статус firewall",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "firewall-cmd --list-all",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Все правила firewall",
+                        "name": "Правила firewall",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "firewall-cmd --list-services",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Разрешённые службы",
+                        "name": "Службы firewall",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "firewall-cmd --add-service=%param1% --permanent\nfirewall-cmd --reload",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Открывает службу в firewall",
+                        "name": "Открыть службу",
+                        "params": [
+                            "Имя службы (http, ssh, etc)"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "firewall-cmd --remove-service=%param1% --permanent\nfirewall-cmd --reload",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Закрывает службу в firewall",
+                        "name": "Закрыть службу",
+                        "params": [
+                            "Имя службы"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "iptables -L -n -v",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Правила iptables",
+                        "name": "iptables список",
+                        "timeout": 15
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Файловые операции": [
+            {
+                "Базовые": [
+                    {
+                        "Просмотр": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "ls -lah %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Список файлов в директории",
+                                "name": "Список файлов",
+                                "params": [
+                                    "Путь"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "du -sh %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Размер директории",
+                                "name": "Размер директории",
+                                "params": [
+                                    "Путь"
+                                ],
+                                "timeout": 30
+                            }
+                        ]
+                    },
+                    {
+                        "Модификация": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "rm -rfv %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удаление файлов/директорий",
+                                "name": "Удалить",
+                                "params": [
+                                    "Путь"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cp -rv %param1% %param2%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Копирование файлов",
+                                "name": "Копировать",
+                                "params": [
+                                    "Источник",
+                                    "Назначение"
+                                ],
+                                "timeout": 120
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "mv -v %param1% %param2%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Перемещение файлов",
+                                "name": "Переместить",
+                                "params": [
+                                    "Источник",
+                                    "Назначение"
+                                ],
+                                "timeout": 60
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "mkdir -pv %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Создание директории",
+                                "name": "Создать директорию",
+                                "params": [
+                                    "Путь"
+                                ],
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Права": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "chmod -Rv 755 %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Изменение прав доступа",
+                                "name": "chmod 755",
+                                "params": [
+                                    "Путь"
+                                ],
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "chown -Rv %param2%:%param3% %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Изменение владельца",
+                                "name": "chown",
+                                "params": [
+                                    "Путь",
+                                    "Пользователь",
+                                    "Группа"
+                                ],
+                                "timeout": 30
+                            }
+                        ]
+                    },
+                    {
+                        "Очистка": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "find %param1% -type f -name \"*.tmp\" -delete",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удаление временных файлов",
+                                "name": "Очистка .tmp файлов",
+                                "params": [
+                                    "Директория"
+                                ],
+                                "timeout": 60
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "find /var/log -type f -name \"*.log\" -mtime +30 -delete",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Удаление старых логов (>30 дней)",
+                                "name": "Очистка старых логов",
+                                "timeout": 30
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "Сетевые ФС": [
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /etc/fstab | grep -E \"(nfs|cifs|smb)\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Монтирование NFS/SMB в fstab",
+                        "name": "fstab NFS/SMB",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "showmount -e %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показать NFS экспорты сервера",
+                        "name": "NFS экспорты",
+                        "params": [
+                            "NFS сервер"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "mount | grep -E \"(nfs|cifs)\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Активные NFS/CIFS монтирования",
+                        "name": "Активные монтирования",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "mount -t nfs %param1%:%param2% %param3%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Монтировать NFS шару",
+                        "name": "Монтировать NFS",
+                        "params": [
+                            "Сервер",
+                            "Удаленный путь",
+                            "Локальная точка монтирования"
+                        ],
+                        "timeout": 20
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "umount %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Отмонтировать файловую систему",
+                        "name": "Отмонтировать",
+                        "params": [
+                            "Точка монтирования"
+                        ],
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "smbclient -L %param1% -N",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показать SMB шары сервера",
+                        "name": "SMB шары",
+                        "params": [
+                            "SMB сервер"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "df -h | grep -E \"(nfs|cifs|smb)\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Использование диска NFS/CIFS",
+                        "name": "Диск NFS/CIFS",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Резервное копирование": [
+            {
+                "Система": [
+                    {
+                        "commands": [
+                            {
+                                "text": "tar -czf /tmp/full_backup_$(date +%Y%m%d_%H%M).tar.gz --exclude=/proc --exclude=/tmp --exclude=/mnt --exclude=/sys --exclude=/dev --exclude=/run /",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Полный бэкап системы",
+                        "name": "Полный бэкап",
+                        "timeout": 3600
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "tar -czf /tmp/etc_backup_$(date +%Y%m%d_%H%M).tar.gz /etc",
+                                "type": "ssh"
+                            },
+                            {
+                                "text": "%login%@%hostname%:/tmp/etc_backup_*.tar.gz::./backups/",
+                                "type": "sftp"
+                            }
+                        ],
+                        "description": "Создаёт бекап конфигурации /etc",
+                        "name": "Бекап /etc",
+                        "timeout": 120
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "rsync -avz --progress /home/ /backup/home/",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Синхронизация /home в backup",
+                        "name": "rsync /home",
+                        "timeout": 600
+                    }
+                ]
+            },
+            {
+                "Пользователи": [
+                    {
+                        "commands": [
+                            {
+                                "text": "user=\"%param1%\"\nif [ ! -d \"/home/$user\" ]; then\n    echo \"Ошибка: папка /home/$user не существует\"\n    exit 1\nfi\ntimestamp=$(date +%Y%m%d_%H%M)\narchive_name=\"backup_${user}_${timestamp}.tar.gz\"\ntar -czf \"/tmp/${archive_name}\" -C /home \"$user\"\necho \"Бекап создан: /tmp/${archive_name}\"",
+                                "type": "ssh"
+                            },
+                            {
+                                "text": "%login%@%hostname%:/tmp/backup_%param1%_*.tar.gz::./backups/",
+                                "type": "sftp"
+                            }
+                        ],
+                        "description": "Создаёт бекап домашнего каталога пользователя",
+                        "name": "Бекап пользователя",
+                        "params": [
+                            "Имя пользователя"
+                        ],
+                        "timeout": 300
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": ".\\backups\\%host%_%param1%.tar.gz %login%@%hostname%:/tmp/restore.tar.gz",
+                                "type": "sftp"
+                            },
+                            {
+                                "text": "user=\"%param1%\"\nrm -rf \"/home/$user\"\nmkdir -p \"/home/$user\"\ntar -xzf /tmp/restore.tar.gz -C /home\nchown -R \"$user:$user\" \"/home/$user\"\nchmod -R 755 \"/home/$user\"\nrm -f /tmp/restore.tar.gz\necho \"Восстановление завершено\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Восстанавливает домашний каталог из бекапа",
+                        "name": "Восстановление пользователя",
+                        "params": [
+                            "Имя пользователя"
+                        ],
+                        "timeout": 300
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dd if=/dev/%param1% of=/tmp/disk_backup_$(date +%Y%m%d).img bs=1M status=progress",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Создать образ диска",
+                        "name": "Образ диска",
+                        "params": [
+                            "Устройство (sda, nvme0n1)"
+                        ],
+                        "timeout": 3600
+                    }
+                ]
+            },
+            {
+                "Пакеты": [
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf list installed > /tmp/installed_packages_$(date +%Y%m%d).txt",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Сохранить список установленных пакетов",
+                        "name": "Список пакетов",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "rpm -qa --qf \"%%{NAME}\\n\" | sort > /tmp/rpm_packages_$(date +%Y%m%d).txt",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Список RPM пакетов",
+                        "name": "RPM список",
+                        "timeout": 30
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Автоматизация": [
+            {
+                "Скрипты": [
+                    {
+                        "commands": [
+                            {
+                                "text": "%param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Выполняет произвольную команду",
+                        "name": "Своя команда",
+                        "params": [
+                            "Команда"
+                        ],
+                        "timeout": 120
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": ".\\scripts\\%param1%.sh::%login%@%hostname%:/tmp/%param1%.sh",
+                                "type": "sftp"
+                            },
+                            {
+                                "text": "chmod +x /tmp/%param1%.sh\nbash /tmp/%param1%.sh",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Загружает и выполняет скрипт",
+                        "name": "Выполнить скрипт",
+                        "params": [
+                            "Имя скрипта (без .sh)"
+                        ],
+                        "timeout": 300
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat > /tmp/script_%timestamp%.sh << 'EOF'\n%param1%\nEOF\nchmod +x /tmp/script_%timestamp%.sh\nbash /tmp/script_%timestamp%.sh",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Создаёт и выполняет скрипт из текста",
+                        "name": "Скрипт из текста",
+                        "params": [
+                            "Содержимое скрипта"
+                        ],
+                        "timeout": 120
+                    }
+                ]
+            },
+            {
+                "Cron": [
+                    {
+                        "commands": [
+                            {
+                                "text": "crontab -l",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Список задач cron",
+                        "name": "crontab список",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "echo \"%param1%\" | crontab -",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Устанавливает задачу cron",
+                        "name": "crontab установить",
+                        "params": [
+                            "Строка cron (например: */5 * * * * /path/to/script.sh)"
+                        ],
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "crontab -r",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Очищает все задачи cron",
+                        "name": "crontab очистить",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "Veyon": [
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf install -y veyon-core",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Устанавливает veyon-core",
+                        "name": "Установка",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "D:/coding/python/pyktool/dist/veyon/1793_public_key.pem::%login%@%hostname%:./%param1%_public_key.pem",
+                                "type": "sftp"
+                            },
+                            {
+                                "text": "veyon-cli authkeys import \"%param1%/public\" \"./%param1%_public_key.pem\"\nveyon-cli authkeys setaccessgroup \"%param1%/public\" \"wheel\"\nveyon-cli config set Authentication/Method 1\nveyon-cli config set Service/HideTrayIcon true\nveyon-cli config set Service/RemoteConnectionNotifications false\nveyon-cli config set Service/FailedAuthenticationNotifications false\nveyon-cli config set Service/ClipboardSynchronizationDisabled true\nveyon-cli config set Service/MultiSession true",
+                                "type": "ssh"
+                            },
+                            {
+                                "text": "rm -fv ./%param1%_public_key.pem",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Копирование ключа и первичная настройка",
+                        "name": "Настройка",
+                        "params": [
+                            "Имя ключа (без _public_key)"
+                        ],
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf remove -y veyon-core",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Удаляет veyon-core",
+                        "name": "Удаление",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "veyon-cli service restart",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Перезапускает службу Veyon",
+                        "name": "Перезагрузка службы",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "veyon-cli config list",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показывает конфигурацию Veyon",
+                        "name": "Показать конфигурацию",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "veyon-cli service status",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус службы Veyon",
+                        "name": "Статус службы",
+                        "timeout": 15
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Специальное": [
+            {
+                "Рабочий стол": [
+                    {
+                        "Обои": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": ".\\wallpaper.jpg::%login%@%hostname%:/usr/share/wallpapers/wallpaper.jpg",
+                                        "type": "sftp"
+                                    },
+                                    {
+                                        "text": "chmod 644 /usr/share/wallpapers/wallpaper.jpg\nuser=$(who | head -n1 | awk '{print $1}')\nsudo -u $user DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u $user)/bus plasma-apply-wallpaperimage /usr/share/wallpapers/wallpaper.jpg",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Загружает и устанавливает свои обои",
+                                "name": "Установить свои обои",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 60
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "users=$(who | awk '{print $1}' | sort -u)\nfor user in $users; do\n    [ \"$user\" = \"root\" ] && continue\n    sudo -u \"$user\" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u \"$user\")/bus plasma-apply-wallpaperimage /usr/share/wallpapers/ROSA-dark-default.svg\ndone",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Устанавливает обои всем пользователям",
+                                "name": "Обои для всех",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "user=$(who | head -n1 | awk '{print $1}')\nsudo -u $user DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u $user)/bus plasma-apply-wallpaperimage /usr/share/wallpapers/ROSA-dark-default.svg",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Устанавливает обои по умолчанию",
+                                "name": "Установить обои",
+                                "timeout": 15
+                            }
+                        ]
+                    },
+                    {
+                        "Браузер": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "user=$(who | head -n1 | awk '{print $1}')\nsudo -u $user DISPLAY=:0 chromium-browser \"ya.ru\" --incognito --fullscreen &",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Открывает ya.ru в Chromium",
+                                "name": "Открыть ya.ru",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "sudo -u $(who | head -n1 | awk '{print $1}') DISPLAY=:0 chromium-browser \"%param1%\" --incognito --fullscreen &",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Открывает указанный сайт",
+                                "name": "Открыть сайт",
+                                "params": [
+                                    "URL сайта"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "user=%param1%\ngrep -q CHROMIUM_USER_FLAGS \"/home/$user/.bash_profile\" && sed -i -r \"s/(CHROMIUM_USER_FLAGS=).*/\\1\\\"--incognito\\\"/\" /home/$user/.bash_profile || echo \"export CHROMIUM_USER_FLAGS=\\\"--incognito\\\"\" >> /home/$user/.bash_profile",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Включает режим инкогнито для пользователя",
+                                "name": "Chromium инкогнито",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "pkill -f chrome",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Закрывает все окна Chrome/Chromium",
+                                "name": "Закрыть Chrome",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "mkdir -p /etc/chromium/policies/managed/",
+                                        "type": "ssh"
+                                    },
+                                    {
+                                        "text": "./chrome/policies.json::%login%@%hostname%:/etc/chromium/policies/managed/policies.json",
+                                        "type": "sftp"
+                                    },
+                                    {
+                                        "text": "mkdir -p /etc/opt/yandex/browser/policies/managed\ncp /etc/chromium/policies/managed/* /etc/opt/yandex/browser/policies/managed",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Устанавливает политики браузера",
+                                "name": "Политики браузера",
+                                "timeout": 30
+                            }
+                        ]
+                    },
+                    {
+                        "Файловые ассоциации": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "py-ini-config set -c -v /home/%param1%/.config/mimeapps.list \"Added Associations\" \"application/pdf\" \"kde5-okularApplication_pdf.desktop\"\npy-ini-config set -c -v /home/%param1%/.config/mimeapps.list \"Default Applications\" \"application/pdf\" \"kde5-okularApplication_pdf.desktop\"",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Устанавливает Okular для PDF по умолчанию",
+                                "name": "PDF в Okular",
+                                "params": [
+                                    "Имя пользователя"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "xdg-mime default org.kde.okular.desktop application/pdf",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Устанавливает Okular для PDF системно",
+                                "name": "PDF в Okular (системно)",
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Управление сессиями": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "loginctl list-sessions",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Список сессий",
+                                "name": "Список сессий",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "loginctl terminate-session %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Завершает сессию",
+                                "name": "Завершить сессию",
+                                "params": [
+                                    "ID сессии"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "loginctl lock-session",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Блокирует текущую сессию",
+                                "name": "Заблокировать сессию",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "qdbus org.kde.ksmserver /KSMServer logout 0 0 0",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Выход из KDE сессии",
+                                "name": "Выход из KDE",
+                                "timeout": 15
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "Принтеры": [
+                    {
+                        "commands": [
+                            {
+                                "text": "lpstat -p -d",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус принтеров",
+                        "name": "Статус принтеров",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "lpstat -a",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Доступные принтеры",
+                        "name": "Список принтеров",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "lpq",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Очередь печати",
+                        "name": "Очередь печати",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "lprm -",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Очистить очередь печати",
+                        "name": "Очистить очередь",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl status cups",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус службы CUPS",
+                        "name": "CUPS статус",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl restart cups",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Перезапуск CUPS",
+                        "name": "Перезапуск CUPS",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /etc/cups/printers.conf | grep -E \"<(Printer|Default)\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Конфигурация принтеров",
+                        "name": "Конфиг CUPS",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "Энергопитание": [
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl status upower",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Статус службы управления питанием",
+                        "name": "Upower статус",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "upower -i $(upower -e | grep BAT)",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о батарее",
+                        "name": "Статус батареи",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /sys/class/power_supply/BAT*/capacity 2>/dev/null || echo \"Нет батареи\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Уровень заряда батареи",
+                        "name": "Заряд батареи",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl suspend",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Ждущий режим (suspend)",
+                        "name": "Ждущий режим",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl hibernate",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Спящий режим (hibernate)",
+                        "name": "Спящий режим",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl hybrid-sleep",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Гибридный спящий режим",
+                        "name": "Гибридный сон",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "Инвентаризация": [
+                    {
+                        "commands": [
+                            {
+                                "text": "echo \"=== СИСТЕМА ===\" && cat /etc/os-release | grep -E \"(NAME|VERSION)\" && echo && echo \"=== CPU ===\" && lscpu | grep -E \"(Model name|Socket|Core|Thread)\" && echo && echo \"=== ПАМЯТЬ ===\" && free -h && echo && echo \"=== ДИСКИ ===\" && lsblk -o NAME,SIZE,TYPE,MODEL",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Полная информация о системе для инвентаризации",
+                        "name": "Инвентаризация",
+                        "timeout": 20
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "hostnamectl",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о hostname и системе",
+                        "name": "Hostname info",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /etc/machine-id",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Уникальный ID машины",
+                        "name": "Machine ID",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "cat /var/lib/dbus/machine-id 2>/dev/null || cat /etc/machine-id",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "D-Bus Machine ID",
+                        "name": "D-Bus ID",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "lscpu | grep -E \"(Architecture|CPU\\(s\\)|Model name|MHz)\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Краткая информация о процессоре",
+                        "name": "CPU кратко",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "lsmem | grep -E \"(Total online memory|Total offline memory)\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о памяти",
+                        "name": "Память кратко",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dmidecode -t memory | grep -E \"(Size|Locator|Type|Speed)\" | head -30",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Детальная информация о RAM",
+                        "name": "RAM детально",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "smartctl --scan",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Сканирование дисков SMART",
+                        "name": "SMART сканирование",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "for disk in $(lsblk -dn -o NAME); do echo \"=== /dev/$disk ===\" && smartctl -i /dev/$disk 2>/dev/null | grep -E \"(Model|Serial|Capacity)\"; done",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о всех дисках",
+                        "name": "Все диски info",
+                        "timeout": 30
+                    }
+                ]
+            },
+            {
+                "Ядро": [
+                    {
+                        "Информация": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "uname -r",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Версия ядра",
+                                "name": "Версия ядра",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "uname -a",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Полная информация о ядре",
+                                "name": "Ядро полностью",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "cat /proc/cmdline",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Параметры загрузки ядра",
+                                "name": "Параметры ядра",
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Модули": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "lsmod | head -20",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Загруженные модули ядра",
+                                "name": "Модули ядра",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "modinfo %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Информация о модуле ядра",
+                                "name": "Инфо о модуле",
+                                "params": [
+                                    "Имя модуля"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "modprobe %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Загрузить модуль ядра",
+                                "name": "Загрузить модуль",
+                                "params": [
+                                    "Имя модуля"
+                                ],
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "modprobe -r %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Выгрузить модуль ядра",
+                                "name": "Выгрузить модуль",
+                                "params": [
+                                    "Имя модуля"
+                                ],
+                                "timeout": 10
+                            }
+                        ]
+                    },
+                    {
+                        "Параметры": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "grub2-editenv list",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Текущая запись GRUB",
+                                "name": "GRUB запись",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "awk -F\"'\" '/menuentry / {print $2}' /boot/grub2/grub.cfg | head -10",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Доступные записи загрузки",
+                                "name": "GRUB записи",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dmesg | grep -i error | tail -20",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Ошибки ядра",
+                                "name": "Ошибки ядра",
+                                "timeout": 15
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "Аппаратное": [
+                    {
+                        "Система": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dmidecode -t system",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Информация о системе (DMI)",
+                                "name": "DMI информация",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dmidecode -s system-serial-number",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Серийный номер системы",
+                                "name": "Серийный номер",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "dmidecode -s baseboard-serial-number",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Серийный номер материнской платы",
+                                "name": "Серийный номер платы",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "lshw -short",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Список оборудования",
+                                "name": "lshw",
+                                "timeout": 15
+                            }
+                        ]
+                    },
+                    {
+                        "Диски": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "smartctl -a /dev/sda",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "S.M.A.R.T. диска",
+                                "name": "S.M.A.R.T. /dev/sda",
+                                "timeout": 30
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "hdparm -I /dev/sda",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Информация о диске",
+                                "name": "hdparm диска",
+                                "timeout": 15
+                            }
+                        ]
+                    },
+                    {
+                        "Устройства": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "lspci",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "PCI устройства",
+                                "name": "PCI устройства",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "lsusb",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "USB устройства",
+                                "name": "USB устройства",
+                                "timeout": 10
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "inxi -Fxz",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Полная информация о системе",
+                                "name": "inxi полная",
+                                "timeout": 20
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "EPM": [
+                    {
+                        "commands": [
+                            {
+                                "text": "epm --version",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Версия EPM",
+                        "name": "EPM версия",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epmplay list",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Список доступных пакетов в epmplay",
+                        "name": "epmplay список",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epmplay install %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Установить пакет через epmplay",
+                        "name": "epmplay install",
+                        "params": [
+                            "Имя пакета"
+                        ],
+                        "timeout": 300
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epmplay remove %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Удалить пакет установленный через epmplay",
+                        "name": "epmplay remove",
+                        "params": [
+                            "Имя пакета"
+                        ],
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epm update",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Обновление индекса EPM",
+                        "name": "EPM update",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epm full-upgrade",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Полное обновление системы через EPM",
+                        "name": "EPM full-upgrade",
+                        "timeout": 600
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epm check",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка целостности пакетов EPM",
+                        "name": "EPM check",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "epm installed",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Список установленных пакетов EPM",
+                        "name": "EPM installed",
+                        "timeout": 30
+                    }
+                ]
+            },
+            {
+                "Диагностика": [
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf check",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка базы данных RPM",
+                        "name": "dnf check",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "rpm --verify %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка целостности пакета",
+                        "name": "verify пакет",
+                        "params": [
+                            "Название пакета"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dnf check-update",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка доступных обновлений",
+                        "name": "check-update",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "xfs_repair -n /dev/sda1",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка XFS без записи",
+                        "name": "xfs_repair (dry-run)",
+                        "timeout": 300
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ldd %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Проверка зависимостей исполняемого файла",
+                        "name": "ldd",
+                        "params": [
+                            "Путь к файлу"
+                        ],
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "file %param1%",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Определение типа файла",
+                        "name": "file",
+                        "params": [
+                            "Путь к файлу"
+                        ],
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "Docker": [
+                    {
+                        "Информация": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker ps",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Запущенные контейнеры",
+                                "name": "Docker ps",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker ps -a",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Все контейнеры",
+                                "name": "Docker ps -a",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker images",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Docker образы",
+                                "name": "Docker images",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker system df",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Использование диска Docker",
+                                "name": "Docker disk usage",
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker stats --no-stream",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Статистика контейнеров",
+                                "name": "Docker stats",
+                                "timeout": 20
+                            }
+                        ]
+                    },
+                    {
+                        "Управление": [
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker logs %param1% --tail 50",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Логи контейнера",
+                                "name": "Docker logs",
+                                "params": [
+                                    "ID или имя контейнера"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker start %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Запустить контейнер",
+                                "name": "Docker start",
+                                "params": [
+                                    "ID или имя"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker stop %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Остановить контейнер",
+                                "name": "Docker stop",
+                                "params": [
+                                    "ID или имя"
+                                ],
+                                "timeout": 15
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker restart %param1%",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Перезапустить контейнер",
+                                "name": "Docker restart",
+                                "params": [
+                                    "ID или имя"
+                                ],
+                                "timeout": 20
+                            },
+                            {
+                                "commands": [
+                                    {
+                                        "text": "docker system prune -f",
+                                        "type": "ssh"
+                                    }
+                                ],
+                                "description": "Очистка неиспользуемых данных Docker",
+                                "name": "Docker prune",
+                                "timeout": 60
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "Специальные": [
+                    {
+                        "commands": [
+                            {
+                                "text": "rpm -qi rosa-iso-info",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Информация о rosa-iso-info",
+                        "name": "rosa-iso-info",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "if ! command -v xdotool &> /dev/null; then\n    dnf install -y xdotool\nfi\nuser=$(who | head -n1 | awk '{print $1}')\nlogin=\"%param1%\"\npassword=\"%param2%\"\nsudo -u $user DISPLAY=:0 bash -c \"chromium-browser --start-fullscreen \\\"http://n06.mcko.ru/test/?login=$login&password=$password&template=17664\\\" &\"\nsudo -u $user DISPLAY=:0 bash -c \"xdotool sleep 5 mousemove 650 530 click 1 && xdotool sleep 2 mousemove 200 340 click 1 && xdotool sleep 2 mousemove 630 450 click 1 &\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Автоматический запуск тестирования МЦКО",
+                        "name": "Нагрузочное тестирование МЦКО",
+                        "params": [
+                            "Логин",
+                            "Пароль"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "dmidecode -t system | awk \"/Serial Number/\" | awk -F':' '{print $2}' | tr -d ' '",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Серийный номер устройства",
+                        "name": "Серийный номер",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "users=$(ls /home)\nfor user in $users; do\n    [ \"$user\" = \"root\" ] && continue\n    dir=\"/home/$user/Рабочий стол\"\n    find \"$dir\" -type f -name \"*.py\" -print -delete 2>/dev/null\ndone",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Очистка рабочих столов от .py файлов",
+                        "name": "Очистка рабочих столов",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "find /home -name \"*.bash_history\" -exec cat {} \\;",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Просмотр истории команд пользователей",
+                        "name": "История команд",
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "history -c && history -w",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Очистка истории текущего пользователя",
+                        "name": "Очистка истории",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "py-ini-config set /home/%param1%/.config/kxkbrc Layout DisplayNames АНГ,РУС,НЕМ\npy-ini-config set /home/%param1%/.config/kxkbrc Layout LayoutList us,ru,de\npy-ini-config set /home/%param1%/.config/kxkbrc Layout VariantList ,,\nsystemctl restart sddm",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Добавление языка",
+                        "params": [
+                            "Логин"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "#!/bin/bash\n\npy-ini-config set /home/%param1%/.config/kxkbrc Layout DisplayNames АНГ,РУС\npy-ini-config set /home/%param1%/.config/kxkbrc Layout LayoutList us,ru\npy-ini-config set /home/%param1%/.config/kxkbrc Layout VariantList ,\n#loginctl terminate-user %param1%\nsystemctl restart sddm",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Удаление языка",
+                        "params": [
+                            "Логин"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "chattr +i /home/%param1%/.config/plasma-org.kde.plasma.desktop-appletsrc\nchattr +i /home/%param1%/.config/plasma-org.kde.plasma.desktop-appletsrc\nchattr +i /home/%param1%/.config/systemsettingsrc\nchattr +i /home/%param1%/.config/kcmfonts\nchattr +i /home/%param1%/.config/kcmfonts\nchattr +i /home/%param1%/.config/kdeglobals\nchattr +i /home/%param1%/.config/kdeglobals\nchattr +i /home/%param1%/default.png\n# chattr +i '/home/%param1%/Рабочий стол'\necho 'Рабочий стол пользователя %param1% заблокироан. Удалить домашнюю папку учетной записи не удастся!'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Заблокировать рабочий стол",
+                        "params": [
+                            "Логин"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "chattr -i /home/%param1%/.config/plasma-org.kde.plasma.desktop-appletsrc\nchattr -i /home/%param1%/.config/plasma-org.kde.plasma.desktop-appletsrc\nchattr -i /home/%param1%/.config/systemsettingsrc\nchattr -i /home/%param1%/.config/kcmfonts\nchattr -i /home/%param1%/.config/kcmfonts\nchattr -i /home/%param1%/.config/kdeglobals\nchattr -i /home/%param1%/.config/kdeglobals\nchattr -i /home/%param1%/default.png\nchattr -i '/home/%param1%/Рабочий стол'\necho 'Рабочй стол пользователя %param1% разблокирован!'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Разблокирует изменения рабочего стола",
+                        "name": "Разблокировать рабочий стол",
+                        "params": [
+                            "Логин"
+                        ],
+                        "timeout": 30
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "if ! command -v wakeonlan &> /dev/null; then\n    dnf install -y wakeonlan\nfi\nwakeonlan %mac%",
+                                "type": "local"
+                            }
+                        ],
+                        "description": "",
+                        "name": "Wake on LAN",
+                        "params": [],
+                        "timeout": 30
+                    }
+                ]
+            },
+            {
+                "Массовое управление": [
+                    {
+                        "commands": [
+                            {
+                                "text": "echo \"=== Hostname ===\" && hostname && echo && echo \"=== Uptime ===\" && uptime && echo && echo \"=== Users ===\" && who",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Быстрый обзор системы",
+                        "name": "Быстрый обзор",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "for user in $(ls /home); do [ -d \"/home/$user\" ] && echo \"User: $user\" && du -sh /home/$user 2>/dev/null; done",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Размер домашних директорий всех пользователей",
+                        "name": "Размер /home/*",
+                        "timeout": 60
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ps aux --sort=-%cpu | head -10",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Топ 10 процессов по CPU",
+                        "name": "Топ CPU (10)",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "ps aux --sort=-%mem | head -10",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Топ 10 процессов по памяти",
+                        "name": "Топ RAM (10)",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "df -h / | tail -1 | awk '{print \"Root usage: \"$5\" (\"$3\"/\"$2\")\"}'",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Использование корневого раздела",
+                        "name": "Root usage %",
+                        "timeout": 10
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "systemctl --failed --no-pager | grep -E \"^●\" | head -5",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Показать упавшие службы (топ 5)",
+                        "name": "Упавшие службы (5)",
+                        "timeout": 15
+                    },
+                    {
+                        "commands": [
+                            {
+                                "text": "echo \"Online users: $(who | wc -l)\" && echo \"Load: $(cat /proc/loadavg | cut -d' ' -f1-3)\" && echo \"Memory: $(free | grep Mem | awk '{printf \"%.1f%%\", $3/$2 * 100.0}')\"",
+                                "type": "ssh"
+                            }
+                        ],
+                        "description": "Краткая сводка состояния",
+                        "name": "Сводка состояния",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "Kiosk": [
+            {
+                "commands": [
+                    {
+                        "text": "py-ini-config set /etc/sddm.conf Autologin User %param1% && systemctl restart sddm",
+                        "type": "ssh"
+                    }
+                ],
+                "description": "Сменить пользователя",
+                "name": "Автологин",
+                "params": [
+                    "Логин"
+                ],
+                "timeout": 30
+            },
+            {
+                "commands": [
+                    {
+                        "text": "py-ini-config set /etc/sddm.conf.d/kde_settings.conf Autologin User kiosk && systemctl restart sddm\nsleep 5\nsudo -u kiosk DISPLAY=:0 XAUTHORITY=/home/kiosk/.Xauthority bash -c '\nxdotool key Tab Tab Tab Tab\nxdotool type --delay 40 \"%param1%\"\nxdotool key Return\n'",
+                        "type": "ssh"
+                    }
+                ],
+                "description": "Загрузиться в Киоск и запустить сайт",
+                "name": "Перелог в киоск и запуск",
+                "params": [
+                    "Сайт"
+                ],
+                "timeout": 30
+            },
+            {
+                "commands": [
+                    {
+                        "text": "wget -O mostech.rpm https://cloud.dit.mos.ru/s/ZsojcJfR2BrgpPj/download/mostech-kiosk-3.1x-60-rosa2021.1.x86_64-full-sch.rpm && sudo dnf install -y mostech.rpm && rm -f mostech.rpm",
+                        "type": "ssh"
+                    }
+                ],
+                "description": "Установка из ссылки ДИТа",
+                "name": "kiosk-install-web",
+                "params": [],
+                "timeout": 1800
+            },
+            {
+                "commands": [
+                    {
+                        "text": ".\\rpm\\%param1%.rpm::%login%@%hostname%:/tmp/%param1%.rpm",
+                        "type": "sftp"
+                    },
+                    {
+                        "text": "rpm -ivh /tmp/%param1%.rpm && rm -f /tmp/%param1%.rpm",
+                        "type": "ssh"
+                    }
+                ],
+                "description": "Загружает RPM файл через SFTP и устанавливает его",
+                "name": "kiosk-install-rpm",
+                "params": [
+                    "Имя RPM файла (без .rpm)"
+                ],
+                "timeout": 1800
+            },
+            {
+                "commands": [
+                    {
+                        "text": "if ! command -v xdotool &> /dev/null; then\n    dnf install -y xdotool\nfi\n\nuser=$(who | grep '(:0)' | awk '{print $1}')\n\necho \"Пользователь: $user\"\necho \"Сайт: %param1%\"\n\nsudo -u \"$user\" DISPLAY=:0 XAUTHORITY=/home/$user/.Xauthority bash -c '\n# получить размер экрана\nread W H <<< $(xdotool getdisplaygeometry)\n\n# клик в центр экрана\nxdotool mousemove $((W/2)) $((H/2)) click 1\n\n# 4 раза Tab\nxdotool key Tab Tab Tab Tab\n\n# ввод текста\nxdotool type --delay 40 \"%param1%\"\n\n# Enter\nxdotool key Return\n'\n",
+                        "type": "ssh"
+                    }
+                ],
+                "description": "Запуск сайта для МЦКО",
+                "name": "kiosk-run-site",
+                "params": [
+                    "Адрес сайта"
+                ],
+                "timeout": 30
+            },
+            {
+                "commands": [
+                    {
+                        "text": "if ! command -v xdotool &> /dev/null; then\n    dnf install -y xdotool\nfi\n\nuser=$(who | grep '(:0)' | awk '{print $1}')\n\nsudo -u \"$user\" DISPLAY=:0 XAUTHORITY=/home/$user/.Xauthority bash -c '\n# получить размер экрана\nread W H <<< $(xdotool getdisplaygeometry)\n\n# клик в центр экрана\nxdotool mousemove $((W/2)) $((H/2)) click 1\n\n# Tab\nxdotool key Tab\n\n# ввод логина\nxdotool type --delay 40 \"%param1%\"\n# Tab\nxdotool key Tab\n# ввод пароля\nxdotool type --delay 40 \"%param2%\"\n\n# Enter\nxdotool key Return\n\nxdotool sleep 2\n\nxdotool key Tab Return\n'\n",
+                        "type": "ssh"
+                    }
+                ],
+                "description": "Запуск сайта для МЦКО",
+                "name": "Нагрузочное (запуск)",
+                "params": [
+                    "Логин",
+                    "Пароль"
+                ],
+                "timeout": 30
+            }
+        ]
+    },
+    {
+        "commands": [
+            {
+                "text": "#!/bin/bash\n\n# --- CONFIGURATION ---\nLOCATION_NAME=\"%param1%\"\n# ---------------------\n\n# 1. Check if the location already exists\necho \"Проверяю наличие Места: $LOCATION_NAME...\"\n\nif veyon-cli networkobjects list | grep -wq $LOCATION_NAME; then\n  echo \"Такое Место уже существует\"\nelse\n  echo \"Создаю $LOCATION_NAME\"\n  veyon-cli networkobjects add location $LOCATION_NAME\nfi\n\n# 2. Add computers to the location\necho \"Добавляю хост $LOCATION_NAME...\"\n\nveyon-cli networkobjects add computer \"%name%\" \"%ip%\" \"%mac%\" \"%param1%\"\n\necho \"Готово! Надо перезагрузить Мастер для применения изменений.\"",
+                "type": "local"
+            },
+            {
+                "text": "sleep 1",
+                "type": "local"
+            }
+        ],
+        "description": "",
+        "name": "Добавить в Veyon",
+        "params": [
+            "Категория"
+        ],
+        "timeout": 30
+    },
+    {
+        "commands": [
+            {
+                "text": "%param1%",
+                "type": "ssh"
+            }
+        ],
+        "description": "",
+        "name": "Своя команда",
+        "params": [
+            "Текст команды"
+        ],
+        "timeout": 60
+    }
+]

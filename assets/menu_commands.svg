@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Gear 1 (center-left) -->
+  <circle cx="44" cy="56" r="18" fill="#5F27CD"/>
+  <rect x="38" y="30" width="12" height="10" rx="2" fill="#FFFFFF"/>
+  <rect x="38" y="72" width="12" height="10" rx="2" fill="#FFFFFF"/>
+  <rect x="18" y="50" width="10" height="12" rx="2" fill="#FFFFFF"/>
+  <rect x="60" y="50" width="10" height="12" rx="2" fill="#FFFFFF"/>
+  <rect x="22" y="36" width="10" height="10" rx="2" transform="rotate(45 27 41)" fill="#FFFFFF"/>
+  <rect x="56" y="36" width="10" height="10" rx="2" transform="rotate(45 61 41)" fill="#FFFFFF"/>
+  <rect x="22" y="66" width="10" height="10" rx="2" transform="rotate(45 27 71)" fill="#FFFFFF"/>
+  <rect x="56" y="66" width="10" height="10" rx="2" transform="rotate(45 61 71)" fill="#FFFFFF"/>
+  <circle cx="44" cy="56" r="10" fill="#FFFFFF" opacity="0.2"/>
+  <circle cx="44" cy="56" r="4" fill="#FFFFFF"/>
+  <!-- Gear 2 (top-right, smaller) -->
+  <circle cx="88" cy="36" r="14" fill="#5F27CD"/>
+  <rect x="83" y="18" width="10" height="8" rx="2" fill="#FFFFFF"/>
+  <rect x="83" y="46" width="10" height="8" rx="2" fill="#FFFFFF"/>
+  <rect x="69" y="30" width="8" height="10" rx="2" fill="#FFFFFF"/>
+  <rect x="99" y="30" width="8" height="10" rx="2" fill="#FFFFFF"/>
+  <circle cx="88" cy="36" r="8" fill="#FFFFFF" opacity="0.2"/>
+  <circle cx="88" cy="36" r="3" fill="#FFFFFF"/>
+  <!-- Gear 3 (bottom-right, medium) -->
+  <circle cx="92" cy="88" r="16" fill="#5F27CD"/>
+  <rect x="86" y="68" width="12" height="10" rx="2" fill="#FFFFFF"/>
+  <rect x="86" y="98" width="12" height="10" rx="2" fill="#FFFFFF"/>
+  <rect x="68" y="82" width="10" height="12" rx="2" fill="#FFFFFF"/>
+  <rect x="106" y="82" width="10" height="12" rx="2" fill="#FFFFFF"/>
+  <circle cx="92" cy="88" r="10" fill="#FFFFFF" opacity="0.2"/>
+  <circle cx="92" cy="88" r="4" fill="#FFFFFF"/>
+</svg>

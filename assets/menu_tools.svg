@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Toolbox body -->
+  <rect x="28" y="48" width="72" height="52" rx="8" fill="#2F3542" stroke="#1E272E" stroke-width="2"/>
+  <!-- Lid -->
+  <path d="M28 48 L36 30 L92 30 L100 48 Z" fill="#57606F" stroke="#2F3542" stroke-width="2"/>
+  <!-- Handle -->
+  <path d="M52 30 L52 22 Q52 18 56 18 L72 18 Q76 18 76 22 L76 30" fill="none" stroke="#2F3542" stroke-width="3" stroke-linecap="round"/>
+  <!-- Latch -->
+  <rect x="56" y="42" width="16" height="10" rx="3" fill="#FFFFFF" stroke="#FFA502" stroke-width="1.5"/>
+  <circle cx="64" cy="47" r="2" fill="#2F3542"/>
+  <!-- Wrench -->
+  <path d="M42 72 L42 84 Q42 88 46 88 L50 88" fill="none" stroke="#CED6E0" stroke-width="4" stroke-linecap="round"/>
+  <path d="M42 72 L38 68" fill="none" stroke="#CED6E0" stroke-width="4" stroke-linecap="round"/>
+  <path d="M42 72 L46 68" fill="none" stroke="#CED6E0" stroke-width="4" stroke-linecap="round"/>
+  <!-- Screwdriver -->
+  <rect x="76" y="64" width="4" height="28" rx="2" fill="#FF6B81" stroke="#FF4757" stroke-width="1"/>
+  <rect x="75" y="60" width="6" height="8" rx="2" fill="#2ED573" stroke="#1E90FF" stroke-width="1"/>
+</svg>

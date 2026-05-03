@@ -1,0 +1,91 @@
+import sys
+import os
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
+from src.config import get_asset_path
+from src.logger import logger
+from src import __version__
+
+# Add the project root directory to Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# ARCHITECTURE: Импорт сервисов и DI контейнера
+from src.di import get_container
+from src.services import initialize_services
+
+# Views
+from src.views.main_window import MainWindow
+
+def initialize_services_and_architecture():
+    """
+    ARCHITECTURE: Инициализация сервисов и архитектурных компонентов приложения.
+
+    Создает и настраивает:
+    - DI Container: контейнер зависимостей
+    - EventBus: шина событий для коммуникации между компонентами
+    - DialogManager: централизованное управление диалогами
+    - WorkerBridge: мост для управления workers
+    - ViewState: управление состоянием представлений
+    - DeviceService: сервис для управления устройствами
+    - CommandService: сервис для управления командами
+    - ConfigService: сервис для управления конфигурацией
+    """
+    logger.info("Initializing services and architecture components...")
+
+    # Получаем DI контейнер и инициализируем сервисы
+    container = get_container()
+    initialize_services(container)
+
+    logger.info("Services and architecture components initialized:")
+    
+    # Получаем компоненты из контейнера для логирования
+    from src.architecture import EventBus, DialogManager, WorkerBridge, ViewState
+    
+    event_bus = container.resolve(EventBus)
+    dialog_manager = container.resolve(DialogManager)
+    worker_bridge = container.resolve(WorkerBridge)
+    view_state = container.resolve(ViewState)
+    
+    logger.info(f"  - EventBus: {id(event_bus)}")
+    logger.info(f"  - DialogManager: {id(dialog_manager)}")
+    logger.info(f"  - WorkerBridge: {id(worker_bridge)}")
+    logger.info(f"  - ViewState: {id(view_state)}")
+    logger.info(f"  - DeviceService: registered")
+    logger.info(f"  - CommandService: registered")
+    logger.info(f"  - ConfigService: registered")
+
+    return container
+
+def main():
+    """Основная точка входа в приложение"""
+    # ARCHITECTURE: Инициализируем сервисы и архитектурные компоненты
+    container = initialize_services_and_architecture()
+
+    # Создаем экземпляр приложения
+    app = QApplication(sys.argv)
+
+    # Принудительное отображение иконок в меню (на Windows может быть отключено)
+    app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
+
+    # Устанавливаем имя организации и приложения для настроек
+    app.setOrganizationName("DNO")
+    app.setApplicationName("DNOTool")
+
+    app.setWindowIcon(QIcon(get_asset_path('favicon.ico')))
+
+    logger.info("Приложение запущено")
+
+    # Создаем и показываем главное окно
+    # ARCHITECTURE: MainWindow инициализирует сервисы самостоятельно через DI контейнер
+    window = MainWindow()
+    window.setWindowTitle(f"DNO Tool v{__version__}")
+    window.resize(1024, 768)  # Начальный размер окна
+    window.show()
+
+    # Запускаем главный цикл приложения
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    logger.info("Запуск приложения")
+    main()

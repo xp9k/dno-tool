@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Document body -->
+  <rect x="28" y="16" width="72" height="96" rx="8" fill="#DDA0DD"/>
+  <!-- Folded corner -->
+  <path d="M84 16 L100 16 L100 32 Z" fill="#FFFFFF" opacity="0.4"/>
+  <!-- Lines -->
+  <rect x="40" y="36" width="48" height="5" rx="2.5" fill="#FFFFFF" opacity="0.4"/>
+  <rect x="40" y="50" width="40" height="5" rx="2.5" fill="#FFFFFF" opacity="0.3"/>
+  <rect x="40" y="64" width="52" height="5" rx="2.5" fill="#FFFFFF" opacity="0.3"/>
+  <rect x="40" y="78" width="36" height="5" rx="2.5" fill="#FFFFFF" opacity="0.3"/>
+  <rect x="40" y="92" width="44" height="5" rx="2.5" fill="#FFFFFF" opacity="0.3"/>
+  <!-- Purple accent bar -->
+  <rect x="28" y="16" width="8" height="96" rx="4" fill="#FFFFFF" opacity="0.3"/>
+</svg>
