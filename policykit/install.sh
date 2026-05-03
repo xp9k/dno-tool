@@ -18,12 +18,15 @@ if [ -d "${SCRIPT_DIR}/policykit" ]; then
     cp "${SCRIPT_DIR}/policykit/com.dnotool.policy" /usr/share/polkit-1/actions/
     cp "${SCRIPT_DIR}/policykit/com.dnotool.pkexec.desktop" /usr/share/applications/
     cp "${SCRIPT_DIR}/policykit/com.dnotool.desktop" /usr/share/applications/
-    cp "${SCRIPT_DIR}/policykit/dnotool-admin" /usr/bin/
+    cp "${SCRIPT_DIR}/policykit/dnotool-admin" /usr/bin/dnotool-admin
     chmod +x /usr/bin/dnotool-admin
     echo "  Готово."
 else
     echo "  Папка policykit не найдена, пропуск."
 fi
+
+echo "Обновление базы desktop-файлов..."
+update-desktop-database /usr/share/applications/ 2>/dev/null || true
 
 echo "Установка commands.json..."
 mkdir -p "${CONFIG_DIR}"
