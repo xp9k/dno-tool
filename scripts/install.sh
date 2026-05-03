@@ -13,39 +13,50 @@ echo "=== Установка dnotool ==="
 
 echo "Получение информации о последнем релизе..."
 
-api_get() {
-    curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" "$1"
-}
-
-LATEST_TAG=""
-ALL_TAGS=$(api_get "https://api.github.com/repos/${REPO}/releases" | grep '"tag_name"' | grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+"' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
-
-if [ -z "${ALL_TAGS}" ]; then
-    echo "Ошибка: не удалось получить список релизов."
-    exit 1
-fi
-
-LATEST_TAG="v${ALL_TAGS}"
-LATEST_VERSION="${ALL_TAGS}"
-
-echo "Последняя версия: ${LATEST_VERSION}"
-
-ARCHIVE_NAME="${BINARY_NAME}-${LATEST_VERSION}-mos.zip"
-
-echo "Загрузка ${ARCHIVE_NAME}..."
-
 TMPDIR=$(mktemp -d)
 trap "rm -rf ${TMPDIR}" EXIT
 
-api_get "https://api.github.com/repos/${REPO}/releases/tags/${LATEST_TAG}" > "${TMPDIR}/release.json"
+curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" "https://api.github.com/repos/${REPO}/releases" -o "${TMPDIR}/releases.json"
 
-ASSET_ID=$(grep -A2 "\"name\": \"${ARCHIVE_NAME}\"" "${TMPDIR}/release.json" | grep '"id"' | head -1 | grep -oP '\d+')
+parse_json=$(python3 -c "
+import json,sys
+with open(sys.argv[1]) as f:
+    data=json.load(f)
+versions=[]
+for r in data:
+    tag=r['tag_name']
+    if tag.startswith('v') and tag[1:].replace('.','').isdigit():
+        versions.append((tag,r))
+if not versions:
+    print('ERROR:no_versioned_releases',file=sys.stderr)
+    sys.exit(1)
+versions.sort(key=lambda x:[int(p) for p in x[0][1:].split('.')])
+tag,rel=versions[-1]
+mos_asset=None
+for a in rel['assets']:
+    if a['name'].endswith('-mos.zip'):
+        mos_asset=a
+        break
+if not mos_asset:
+    print('ERROR:no_mos_asset',file=sys.stderr)
+    sys.exit(1)
+print(f'{tag[1:]}')
+print(f'{mos_asset[\"id\"]}')
+print(f'{mos_asset[\"name\"]}')
+" "${TMPDIR}/releases.json")
 
-if [ -z "${ASSET_ID}" ]; then
-    echo "Ошибка: архив ${ARCHIVE_NAME} не найден."
-    cat "${TMPDIR}/release.json"
+if [ $? -ne 0 ]; then
+    echo "Ошибка: не удалось найти релиз."
+    cat "${TMPDIR}/releases.json"
     exit 1
 fi
+
+LATEST_VERSION=$(echo "${parse_json}" | sed -n '1p')
+ASSET_ID=$(echo "${parse_json}" | sed -n '2p')
+ARCHIVE_NAME=$(echo "${parse_json}" | sed -n '3p')
+
+echo "Последняя версия: ${LATEST_VERSION}"
+echo "Загрузка ${ARCHIVE_NAME}..."
 
 curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
 
