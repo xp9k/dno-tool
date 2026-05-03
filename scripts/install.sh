@@ -60,7 +60,7 @@ WORKDIR="${HOME}/${ARCHIVE_NAME%.zip}"
 mkdir -p "${WORKDIR}"
 
 echo "Загрузка ${ARCHIVE_NAME}..."
-curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${HOME}/${ARCHIVE_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
+curl -fL --progress-bar -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${HOME}/${ARCHIVE_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
 
 echo "Распаковка..."
 unzip -o "${HOME}/${ARCHIVE_NAME}" -d "${WORKDIR}" >/dev/null
