@@ -43,6 +43,7 @@ if ($LatestVersion -eq "latest" -or $LatestVersion -notmatch '^\d+\.\d+\.\d+$') 
     $Sorted = $VersionReleases | Sort-Object { [version]($_.tag_name.TrimStart('v')) }
     $LatestRelease = $Sorted[-1]
     $LatestVersion = $LatestRelease.tag_name.TrimStart('v')
+    $Release = $LatestRelease
 }
 
 Write-Host "Latest version: $LatestVersion"

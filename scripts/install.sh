@@ -36,6 +36,7 @@ if [[ "${LATEST_VERSION}" == "latest" || ! "${LATEST_VERSION}" =~ ^[0-9]+\.[0-9]
     ALL_RELEASE_DATA=$(curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" "https://api.github.com/repos/${REPO}/releases")
     LATEST_TAG=$(echo "${ALL_RELEASE_DATA}" | grep '"tag_name"' | grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
     LATEST_VERSION="${LATEST_TAG#v}"
+    RELEASE_DATA=$(echo "${ALL_RELEASE_DATA}" | grep -A5 "\"tag_name\": \"v${LATEST_VERSION}\"")
 fi
 
 echo "Latest version: ${LATEST_VERSION}"
