@@ -1,6 +1,5 @@
 # install.ps1 — dnotool installer for Windows
-# Usage: powershell -ExecutionPolicy Bypass -File install.ps1
-# Token for private repo access is embedded below.
+# Installs binary and commands.json
 
 $Token = "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"
 
@@ -37,6 +36,15 @@ try {
 
 $LatestTag = $Release.tag_name
 $LatestVersion = $LatestTag.TrimStart("v")
+
+if ($LatestVersion -eq "latest" -or $LatestVersion -notmatch '^\d+\.\d+\.\d+$') {
+    $AllReleases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $Headers
+    $VersionReleases = $AllReleases | Where-Object { $_.tag_name -match '^v\d+\.\d+\.\d+$' }
+    $Sorted = $VersionReleases | Sort-Object { [version]($_.tag_name.TrimStart('v')) }
+    $LatestRelease = $Sorted[-1]
+    $LatestVersion = $LatestRelease.tag_name.TrimStart('v')
+}
+
 Write-Host "Latest version: $LatestVersion"
 
 if ($CurrentVersion -eq $LatestVersion) {

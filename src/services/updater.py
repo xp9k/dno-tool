@@ -104,9 +104,28 @@ def _download_file(url: str, dest: str, token: str = None):
             shutil.copyfileobj(resp, f)
 
 
+def _is_version_tag(tag: str) -> bool:
+    s = tag.lstrip("v")
+    parts = s.split(".")
+    return len(parts) >= 2 and all(p.isdigit() for p in parts)
+
+
+def get_version_releases(token: str = None) -> list:
+    releases = get_all_releases(token)
+    return [r for r in releases if _is_version_tag(r.get("tag_name", ""))]
+
+
 def get_latest_release(token: str = None) -> dict:
     url = f"{GITHUB_API}/repos/{REPO}/releases/latest"
-    return _fetch_json(url, token)
+    release = _fetch_json(url, token)
+    tag = release.get("tag_name", "")
+    if not _is_version_tag(tag):
+        version_releases = get_version_releases(token)
+        if not version_releases:
+            raise FileNotFoundError("No versioned releases found.")
+        version_releases.sort(key=lambda r: [int(x) for x in r["tag_name"].lstrip("v").split(".")])
+        release = version_releases[-1]
+    return release
 
 
 def get_all_releases(token: str = None) -> list:
@@ -254,6 +273,45 @@ def update(token: str = None) -> dict:
             except PermissionError:
                 subprocess.run(["sudo", "cp", src_binary, str(dst_binary)], check=True)
                 subprocess.run(["sudo", "chmod", "+x", str(dst_binary)], check=True)
+
+            extracted_dir = os.path.join(tmpdir, "extracted")
+            policykit_dir = os.path.join(extracted_dir, "policykit")
+            if os.path.isdir(policykit_dir):
+                polkit_actions = Path("/usr/share/polkit-1/actions")
+                applications = Path("/usr/share/applications")
+                admin_src = os.path.join(policykit_dir, "dnotool-admin")
+
+                try:
+                    shutil.copy2(
+                        os.path.join(policykit_dir, "com.dnotool.policy"),
+                        str(polkit_actions),
+                    )
+                    shutil.copy2(
+                        os.path.join(policykit_dir, "com.dnotool.pkexec.desktop"),
+                        str(applications),
+                    )
+                    shutil.copy2(
+                        os.path.join(policykit_dir, "com.dnotool.desktop"),
+                        str(applications),
+                    )
+                    shutil.copy2(admin_src, "/usr/bin/")
+                    os.chmod("/usr/bin/dnotool-admin", 0o755)
+                except PermissionError:
+                    subprocess.run(["sudo", "cp", os.path.join(policykit_dir, "com.dnotool.policy"), str(polkit_actions)], check=True)
+                    subprocess.run(["sudo", "cp", os.path.join(policykit_dir, "com.dnotool.pkexec.desktop"), str(applications)], check=True)
+                    subprocess.run(["sudo", "cp", os.path.join(policykit_dir, "com.dnotool.desktop"), str(applications)], check=True)
+                    subprocess.run(["sudo", "cp", admin_src, "/usr/bin/"], check=True)
+                    subprocess.run(["sudo", "chmod", "+x", "/usr/bin/dnotool-admin"], check=True)
+
+            uninstall_src = os.path.join(extracted_dir, "uninstall.sh")
+            if os.path.exists(uninstall_src):
+                uninstall_dst = "/usr/local/bin/dnotool-uninstall.sh"
+                try:
+                    shutil.copy2(uninstall_src, uninstall_dst)
+                    os.chmod(uninstall_dst, 0o755)
+                except PermissionError:
+                    subprocess.run(["sudo", "cp", uninstall_src, uninstall_dst], check=True)
+                    subprocess.run(["sudo", "chmod", "+x", uninstall_dst], check=True)
 
             shutil.rmtree(tmpdir, ignore_errors=True)
 
