@@ -30,7 +30,7 @@ $t="github_pat_11ALGYNZI0QO4B3AHX9GZJ_wfqVdtq590oVR4NezipDT2hYhajShGZ4dWk5a0PRjm
 ### Удаление
 
 ```bash
-bash <(curl -sL -H "Authorization: token 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" -H "Accept: application/vnd.github.v3.raw" https://api.github.com/repos/xp9k/dno-tool/contents/scripts/uninstall.sh)
+dnotool-uninstall.sh
 ```
 
 ## Лицензия

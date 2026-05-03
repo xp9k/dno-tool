@@ -56,17 +56,13 @@ ARCHIVE_NAME=$(echo "${parse_json}" | sed -n '3p')
 
 echo "Последняя версия: ${LATEST_VERSION}"
 
-WORKDIR="${HOME}/${ARCHIVE_NAME%.zip}"
-mkdir -p "${WORKDIR}"
-
 echo "Загрузка ${ARCHIVE_NAME}..."
-curl -fL --progress-bar -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${HOME}/${ARCHIVE_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
+curl -fL --progress-bar -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
 
 echo "Распаковка..."
-unzip -o "${HOME}/${ARCHIVE_NAME}" -d "${WORKDIR}" >/dev/null
-rm -f "${HOME}/${ARCHIVE_NAME}"
+unzip -o "${TMPDIR}/${ARCHIVE_NAME}" -d "${TMPDIR}/extracted" >/dev/null
 
-cd "${WORKDIR}"
+cd "${TMPDIR}/extracted"
 
 chmod +x dnotool install.sh uninstall.sh 2>/dev/null || true
 if [ -d policykit ]; then

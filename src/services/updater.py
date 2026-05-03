@@ -102,6 +102,44 @@ def _download_file(url: str, dest: str, token: str = None):
             shutil.copyfileobj(resp, f)
 
 
+def download_commands_json(token: str = None) -> dict:
+    """Download commands.json from the GitHub repository.
+
+    Returns dict:
+        - success: bool
+        - message: str
+        - data: list or None — parsed JSON data
+        - error: str or None
+    """
+    try:
+        url = f"{GITHUB_API}/repos/{REPO}/contents/commands.json"
+        headers = _get_headers(token)
+        headers["Accept"] = "application/vnd.github.v3.raw"
+
+        import urllib.request
+        import tempfile
+
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8")
+
+        data = json.loads(raw)
+
+        return {
+            "success": True,
+            "message": "Команды загружены с сервера",
+            "data": data,
+            "error": None,
+        }
+
+    except PermissionError as e:
+        return {"success": False, "message": f"Ошибка авторизации: {e}", "data": None, "error": str(e)}
+    except ConnectionError as e:
+        return {"success": False, "message": f"Сетевая ошибка: {e}", "data": None, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "message": f"Ошибка загрузки команд: {e}", "data": None, "error": str(e)}
+
+
 def _is_version_tag(tag: str) -> bool:
     s = tag.lstrip("v")
     parts = s.split(".")

@@ -1,6 +1,7 @@
 import os
+import json
 from typing import List, Dict, Optional, Any, Tuple
-from PySide6.QtWidgets import (QWidget, QTreeView, QListView, QSplitter, 
+from PySide6.QtWidgets import (QApplication, QWidget, QTreeView, QListView, QSplitter,
                               QVBoxLayout, QHBoxLayout, QGridLayout, QFrame, QPushButton, 
                               QAbstractItemView, QMenuBar, QFileDialog, QMenu,
                               QInputDialog, QLineEdit, QComboBox, QTableWidget,
@@ -405,6 +406,10 @@ class MainWindow(QWidget):
         import_commands_action.triggered.connect(self.import_commands_from_file)
         commands_menu.addAction(import_commands_action)
 
+        import_server_action = QAction(QIcon(ICONS.get('menu_import', '')), "Импортировать команды с сервера", self)
+        import_server_action.triggered.connect(self.import_commands_from_server)
+        commands_menu.addAction(import_server_action)
+
         export_commands_action = QAction(QIcon(ICONS.get('menu_export', '')), "Экспортировать команды", self)
         export_commands_action.triggered.connect(lambda : self.save_commands_to_file())
         commands_menu.addAction(export_commands_action)
@@ -505,6 +510,44 @@ class MainWindow(QWidget):
             else:
                 logger.error(f"MainWindow: {message}")
                 QMessageBox.critical(self, "Ошибка импорта", message)
+
+    def import_commands_from_server(self):
+        """Импорт команд с GitHub через Contents API"""
+        from src.services.updater import download_commands_json
+
+        self.statusBar().showMessage("Загрузка команд с сервера...", 0) if hasattr(self, 'statusBar') else None
+        QApplication.processEvents()
+
+        result = download_commands_json()
+
+        if not result["success"]:
+            self.statusBar().showMessage("", 0) if hasattr(self, 'statusBar') else None
+            QMessageBox.critical(self, "Ошибка", result["message"])
+            return
+
+        if QMessageBox.question(self, "Импорт команд", "Заменить текущие команды загруженными с сервера?",
+                                QMessageBox.Yes | QMessageBox.No) == QMessageBox.No:
+            self.statusBar().showMessage("", 0) if hasattr(self, 'statusBar') else None
+            return
+
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w", encoding="utf-8")
+        json.dump(result["data"], tmp, ensure_ascii=False, indent=4)
+        tmp.close()
+
+        success, message = self.command_service.import_commands_from_file(tmp.name)
+        os.unlink(tmp.name)
+
+        if success:
+            commands = self.command_service.get_all_commands()
+            self.command_combo_box.clear()
+            self.command_combo_box.load_tasks(commands)
+            self.command_combo_box.select_first_task()
+            self.statusBar().showMessage(result["message"], 3000) if hasattr(self, 'statusBar') else None
+            logger.info(f"MainWindow: commands imported from server")
+        else:
+            self.statusBar().showMessage("", 0) if hasattr(self, 'statusBar') else None
+            QMessageBox.critical(self, "Ошибка импорта", message)
 
 
     def save_commands_to_file(self, file_path: str = None):
