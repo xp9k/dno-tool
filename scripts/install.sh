@@ -47,6 +47,7 @@ if [ -n "${CURRENT_VERSION}" ] && [ "${CURRENT_VERSION}" = "${LATEST_VERSION}" ]
 fi
 
 ARCHIVE_NAME="${BINARY_NAME}-${LATEST_VERSION}-mos.zip"
+ASSET_URL=$(echo "${RELEASE_DATA}" | grep '"url"' | grep -B1 "\"${ARCHIVE_NAME}\"" | grep '"url"' | head -1 | sed 's/.*"url"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/')
 DOWNLOAD_URL=$(echo "${RELEASE_DATA}" | grep '"browser_download_url"' | grep "${ARCHIVE_NAME}" | head -1 | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/')
 
 if [ -z "${DOWNLOAD_URL}" ]; then
@@ -58,7 +59,11 @@ TMPDIR=$(mktemp -d)
 trap "rm -rf ${TMPDIR}" EXIT
 
 echo "Downloading ${ARCHIVE_NAME}..."
-curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "${DOWNLOAD_URL}"
+if [ -n "${ASSET_URL}" ]; then
+    curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "${ASSET_URL}"
+else
+    curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "${DOWNLOAD_URL}"
+fi
 
 echo "Extracting..."
 unzip -o "${TMPDIR}/${ARCHIVE_NAME}" -d "${TMPDIR}/extracted" >/dev/null

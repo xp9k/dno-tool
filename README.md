@@ -24,13 +24,7 @@ bash <(curl -sL -H "Authorization: token github_pat_11ALGYNZI0QO4B3AHX9GZJ_wfqVd
 ### Windows (PowerShell от имени администратора)
 
 ```powershell
-$t="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"; $h=@{Authorization="token $t";Accept="application/vnd.github.v3.raw"}; Invoke-WebRequest -Uri "https://api.github.com/repos/xp9k/dno-tool/contents/scripts/install.ps1" -Headers $h -OutFile install.ps1; .\install.ps1; Remove-Item install.ps1
-```
-
-## Удаление (МОС / ALT Linux)
-
-```bash
-sudo dnotool-uninstall.sh
+$t="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"; Invoke-WebRequest -Uri "https://api.github.com/repos/xp9k/dno-tool/contents/scripts/install.ps1" -Headers @{Authorization="token $t";Accept="application/vnd.github.v3.raw"} -OutFile install.ps1; .\install.ps1; Remove-Item install.ps1
 ```
 
 ## Лицензия

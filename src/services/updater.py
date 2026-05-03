@@ -97,6 +97,7 @@ def _download_file(url: str, dest: str, token: str = None):
     import urllib.request
 
     headers = _get_headers(token)
+    headers["Accept"] = "application/octet-stream"
     req = urllib.request.Request(url, headers=headers)
 
     with urllib.request.urlopen(req, timeout=120) as resp:
@@ -226,7 +227,7 @@ def update(token: str = None) -> dict:
                 "error": f"Archive {archive_name} not found.",
             }
 
-        download_url = asset.get("browser_download_url")
+        download_url = asset.get("url") or asset.get("browser_download_url")
 
         tmpdir = tempfile.mkdtemp(prefix="dnotool-update-")
         archive_path = os.path.join(tmpdir, archive_name)

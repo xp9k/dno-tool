@@ -61,7 +61,7 @@ if (-not $Asset) {
     exit 1
 }
 
-$DownloadUrl = $Asset.browser_download_url
+$DownloadUrl = $Asset.url
 
 $TempDir = Join-Path $env:TEMP "dnotool-install-$(Get-Random)"
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
@@ -69,11 +69,12 @@ New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 Write-Host "Downloading $ArchiveName..."
 $ZipPath = Join-Path $TempDir $ArchiveName
 
-$WebClient = New-Object System.Net.WebClient
-$WebClient.Headers.Add("Authorization", "token $Token")
-$WebClient.Headers.Add("User-Agent", "dnotool-updater")
 try {
-    $WebClient.DownloadFile($DownloadUrl, $ZipPath)
+    Invoke-WebRequest -Uri $DownloadUrl -Headers @{
+        "Authorization" = "token $Token"
+        "Accept" = "application/octet-stream"
+        "User-Agent" = "dnotool-updater"
+    } -OutFile $ZipPath
 } catch {
     Write-Host "Error: Download failed: $_" -ForegroundColor Red
     Remove-Item -Recurse -Force $TempDir
