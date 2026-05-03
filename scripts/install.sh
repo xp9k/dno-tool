@@ -60,4 +60,4 @@ if [ -d policykit ]; then
 fi
 
 echo "Запуск установки..."
-sudo bash install.sh
+bash install.sh

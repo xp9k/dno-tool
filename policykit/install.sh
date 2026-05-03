@@ -1,8 +1,13 @@
 #!/bin/bash
 # install.sh — локальная установка dnotool из распакованного архива
-# Запуск: cd в распакованную папку, затем: sudo bash install.sh
+# Запуск: bash install.sh (права запрашиваются автоматически)
 
 set -euo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Запрос прав суперпользователя..."
+    exec sudo bash "$0" "$@"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="${HOME}/.dnotool"
