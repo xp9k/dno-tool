@@ -1,5 +1,5 @@
 #!/bin/bash
-# Скрипт установки DNOTool с поддержкой Polkit и графических тем
+# install.sh — локальная установка dnotool из распакованного архива
 # Запуск: cd в распакованную папку, затем: sudo bash install.sh
 
 set -euo pipefail
@@ -21,6 +21,8 @@ if [ -d "${SCRIPT_DIR}/policykit" ]; then
     cp "${SCRIPT_DIR}/policykit/dnotool-admin" /usr/bin/
     chmod +x /usr/bin/dnotool-admin
     echo "  Готово."
+else
+    echo "  Папка policykit не найдена, пропуск."
 fi
 
 echo "Установка commands.json..."

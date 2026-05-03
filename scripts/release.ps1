@@ -62,7 +62,7 @@ if ($HasMos) {
     New-Item -ItemType Directory -Path "$MosDir\policykit" -Force | Out-Null
     Copy-Item "$DistDir\$BinaryName" $MosDir
     Copy-Item "commands.json" $MosDir
-    Copy-Item "scripts\install.sh" $MosDir
+    Copy-Item "policykit\install.sh" $MosDir
     Copy-Item "scripts\uninstall.sh" $MosDir
     Copy-Item "policykit\com.dnotool.policy" "$MosDir\policykit\"
     Copy-Item "policykit\com.dnotool.pkexec.desktop" "$MosDir\policykit\"
