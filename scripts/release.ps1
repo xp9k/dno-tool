@@ -52,7 +52,7 @@ Write-Host "Упаковка Windows-архива..."
 Copy-Item "$DistDir\$BinaryName.exe" $WinDir
 Copy-Item "commands.json" $WinDir
 $WinArchive = "$DistDir\$BinaryName-$Version-windows.zip"
-Compress-Archive -Path "$WinDir\*" -DestinationPath $WinArchive -Force
+python -c "import zipfile,os; z=zipfile.ZipFile(r'$WinArchive','w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r'$WinDir',f),f) for f in os.listdir(r'$WinDir')]; z.close()"
 
 $HasMos = Test-Path "$DistDir\$BinaryName"
 if ($HasMos) {
@@ -71,7 +71,7 @@ if ($HasMos) {
     $desktop = $desktop -replace '^Version=.*', "Version=$Version"
     $desktop | Set-Content "$MosDir\policykit\com.dnotool.desktop"
     $MosArchive = "$DistDir\$BinaryName-$Version-mos.zip"
-    Compress-Archive -Path "$MosDir\*" -DestinationPath $MosArchive -Force
+    python -c "import zipfile,os; z=zipfile.ZipFile(r'$MosArchive','w',zipfile.ZIP_DEFLATED); base=r'$MosDir'; [z.write(os.path.join(dp,f),os.path.relpath(os.path.join(dp,f),base)) for dp,dn,fn in os.walk(base) for f in fn]; z.close()"
     Write-Host "MOS-архив создан."
 } else {
     Write-Host "ВНИМАНИЕ: Linux-бинарный файл не найден. MOS-архив пропущен." -ForegroundColor Yellow
