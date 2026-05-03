@@ -1,4 +1,4 @@
-# install.ps1 — загрузчик dnotool для Windows
+﻿# install.ps1 — загрузчик dnotool для Windows
 # Скачивает архив последнего релиза в папку "Загрузки"
 
 $Token = "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"
