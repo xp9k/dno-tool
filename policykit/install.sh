@@ -22,7 +22,6 @@ echo "Установка файлов PolicyKit..."
 if [ -d "${SCRIPT_DIR}/policykit" ]; then
     cp "${SCRIPT_DIR}/policykit/com.dnotool.policy" /usr/share/polkit-1/actions/
     cp "${SCRIPT_DIR}/policykit/com.dnotool.pkexec.desktop" /usr/share/applications/
-    cp "${SCRIPT_DIR}/policykit/com.dnotool.desktop" /usr/share/applications/
     cp "${SCRIPT_DIR}/policykit/dnotool-admin" /usr/bin/dnotool-admin
     chmod +x /usr/bin/dnotool-admin
     echo "  Готово."
