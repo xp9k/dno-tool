@@ -112,7 +112,7 @@ class FFmpegStreamManager(QObject):
         logger.debug(f"FFmpegStreamManager: Command: {cmd}")
 
         try:
-            # Для x11grab находим Xauthority и разрешаем доступ к дисплею
+             # Для x11grab находим Xauthority и разрешаем доступ к дисплею
             capture_type = settings.get("capture_type", "")
             if capture_type == "x11grab":
                 display = settings.get("capture_input", ":0").split(".")[0] or ":0"

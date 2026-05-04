@@ -146,6 +146,7 @@ class MediaConfig:
     ffmpeg_path: str = "ffmpeg"
     ffplay_path: str = "ffplay"
     vlc_path: str = "vlc"
+    recording_path: str = ""
 
 
 @dataclass

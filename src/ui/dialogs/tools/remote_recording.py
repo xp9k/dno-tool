@@ -19,8 +19,10 @@ Remote Recording Dialog — Диалог удалённой записи вид�
 import html as html_module
 import os
 import re
+import shlex
 import shutil
 import time
+from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import (
@@ -31,7 +33,7 @@ from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QLineEdit, QPushButton, QComboBox, QSpinBox,
     QTextEdit, QTabWidget, QGroupBox,
-    QFileDialog, QMessageBox, QApplication,
+    QFileDialog, QMessageBox, QApplication, QCheckBox, QSizePolicy, QLayout,
 )
 
 from src.domain.models import DeviceModel
@@ -340,6 +342,11 @@ class RemoteRecordingDialog(QDialog):
         self._scan_results: list = []
         self._scan_audio_results: list = []
         self._server_state: str = "idle"
+        self._is_recording: bool = False
+        self._rec_filepath: str = ""
+        self._rec_start_time: float = 0.0
+        self._rec_pid_file: str = ""
+        self._rec_log_lines: list[tuple[str, Optional[str]]] = []
 
         self._init_ui()
         self._load_settings()
@@ -353,7 +360,7 @@ class RemoteRecordingDialog(QDialog):
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setSpacing(6)
 
         # --- Верхний статус + SSH-проверка ---
         top_row = QHBoxLayout()
@@ -368,13 +375,14 @@ class RemoteRecordingDialog(QDialog):
         top_row.addWidget(self.ssh_status_label)
         layout.addLayout(top_row)
 
-        # --- Вкладки ---
-        self.tabs = QTabWidget()
-
-        # Вкладка "Источник"
+        # --- Вкладка "Источник" (верхний уровень) ---
         source_tab = QWidget()
-        source_layout = QFormLayout(source_tab)
-        source_layout.setSpacing(8)
+        source_layout = QVBoxLayout(source_tab)
+        source_layout.setSpacing(6)
+
+        # --- Тип захвата ---
+        capture_row = QFormLayout()
+        capture_row.setSpacing(4)
 
         self.capture_type_combo = QComboBox()
         self.capture_type_combo.addItem("Экран (x11grab)", "x11grab")
@@ -392,16 +400,19 @@ class RemoteRecordingDialog(QDialog):
         self.scan_btn.clicked.connect(self._scan_devices)
 
         capture_input_row = QHBoxLayout()
+        capture_input_row.setSpacing(4)
         capture_input_row.addWidget(self.capture_input_combo, stretch=3)
         capture_input_row.addWidget(self.scan_btn, stretch=1)
 
-        source_layout.addRow("Тип захвата:", self.capture_type_combo)
-        source_layout.addRow("Источник:", capture_input_row)
+        capture_row.addRow("Тип захвата:", self.capture_type_combo)
+        capture_row.addRow("Источник:", capture_input_row)
+        source_layout.addLayout(capture_row)
 
         # --- Видео ---
         video_group = QGroupBox("Видео")
+        video_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         video_layout = QFormLayout(video_group)
-        video_layout.setSpacing(6)
+        video_layout.setSpacing(4)
 
         self.profile_combo = QComboBox()
         for k, v in _PROFILES.items():
@@ -446,10 +457,11 @@ class RemoteRecordingDialog(QDialog):
 
         # --- Аудио ---
         self._audio_group = QGroupBox("Аудио")
+        self._audio_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self._audio_group.setCheckable(True)
-        self._audio_group.setChecked(True)
+        self._audio_group.setChecked(False)
         audio_layout = QFormLayout(self._audio_group)
-        audio_layout.setSpacing(6)
+        audio_layout.setSpacing(4)
 
         self.audio_source_combo = QComboBox()
         self.audio_source_combo.addItem("PulseAudio", "pulse")
@@ -478,6 +490,20 @@ class RemoteRecordingDialog(QDialog):
         audio_layout.addRow("Кодек:", self.audio_codec_combo)
         audio_layout.addRow("Битрейт:", self.audio_bitrate_edit)
 
+        params_row = QHBoxLayout()
+        params_row.setSpacing(8)
+        params_row.addWidget(video_group, stretch=1)
+        params_row.addWidget(self._audio_group, stretch=1)
+        source_layout.addLayout(params_row)
+
+        # ===================== Вложенные вкладки Стрим/Запись =====================
+        self.mode_tabs = QTabWidget()
+
+        # --- Вкладка "Стрим" (вложенная) ---
+        stream_tab = QWidget()
+        stream_layout = QVBoxLayout(stream_tab)
+        stream_layout.setSpacing(6)
+
         self.transport_combo = QComboBox()
         self.transport_combo.addItem("TCP (listen)", "tcp")
         self.transport_combo.addItem("HTTP (listen)", "http")
@@ -488,20 +514,35 @@ class RemoteRecordingDialog(QDialog):
         self.port_spin.setValue(8080)
         self.port_spin.valueChanged.connect(self._update_connection_url)
 
-        params_row = QHBoxLayout()
-        params_row.setSpacing(10)
-        params_row.addWidget(video_group, stretch=1)
-        params_row.addWidget(self._audio_group, stretch=1)
+        stream_form = QFormLayout()
+        stream_form.setSpacing(4)
+        stream_form.addRow("Протокол:", self.transport_combo)
+        stream_form.addRow("Порт:", self.port_spin)
+        stream_layout.addLayout(stream_form)
 
-        source_layout.addRow(params_row)
-        source_layout.addRow("Протокол:", self.transport_combo)
-        source_layout.addRow("Порт:", self.port_spin)
-        self.tabs.addTab(source_tab, "Источник")
+        # --- URL потока ---
+        url_group = QGroupBox("URL потока")
+        url_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        url_layout = QVBoxLayout(url_group)
+        url_layout.setSpacing(4)
+        url_row = QHBoxLayout()
+        self.url_edit = QLineEdit()
+        self.url_edit.setReadOnly(True)
+        self.url_edit.setPlaceholderText("URL появится после запуска сервера")
+        url_row.addWidget(self.url_edit)
+        self.copy_url_btn = QPushButton("📋")
+        self.copy_url_btn.setToolTip("Копировать URL в буфер обмена")
+        self.copy_url_btn.setFixedWidth(36)
+        self.copy_url_btn.clicked.connect(self._copy_url_to_clipboard)
+        url_row.addWidget(self.copy_url_btn)
+        url_layout.addLayout(url_row)
+        stream_layout.addWidget(url_group)
 
-        # Вкладка "Пути"
-        paths_tab = QWidget()
-        paths_layout = QFormLayout(paths_tab)
-        paths_layout.setSpacing(8)
+        # --- Пути к плеерам ---
+        paths_group = QGroupBox("Пути к плеерам")
+        paths_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        paths_form = QFormLayout(paths_group)
+        paths_form.setSpacing(4)
 
         self.ffmpeg_path_edit = QLineEdit()
         self.ffplay_path_edit = QLineEdit()
@@ -514,58 +555,140 @@ class RemoteRecordingDialog(QDialog):
         ]:
             edit.editingFinished.connect(lambda e=edit, n=name: self._validate_binary_field(e, n))
             row = QHBoxLayout()
+            row.setSpacing(4)
             row.addWidget(edit)
             btn = QPushButton("Обзор...")
             btn.clicked.connect(lambda checked=False, n=name, e=edit: self._browse_path(n, e))
             row.addWidget(btn)
-            paths_layout.addRow(f"{name.capitalize()}:", row)
+            paths_form.addRow(f"{name.capitalize()}:", row)
 
-        self.tabs.addTab(paths_tab, "Пути")
-        layout.addWidget(self.tabs)
+        stream_layout.addWidget(paths_group)
 
-        self._log_lines: list[tuple[str, Optional[str]]] = []
-
-        # --- URL потока ---
-        url_group = QGroupBox("URL потока")
-        url_layout = QVBoxLayout(url_group)
-        url_row = QHBoxLayout()
-        self.url_edit = QLineEdit()
-        self.url_edit.setReadOnly(True)
-        self.url_edit.setPlaceholderText("URL появится после запуска сервера")
-        url_row.addWidget(self.url_edit)
-        self.copy_url_btn = QPushButton("📋")
-        self.copy_url_btn.setToolTip("Копировать URL в буфер обмена")
-        self.copy_url_btn.setFixedWidth(36)
-        self.copy_url_btn.clicked.connect(self._copy_url_to_clipboard)
-        url_row.addWidget(self.copy_url_btn)
-        url_layout.addLayout(url_row)
-        layout.addWidget(url_group)
-
-        # --- Кнопки ---
-        btn_layout = QHBoxLayout()
-        self.start_btn = QPushButton("▶ Запустить сервер на устройстве")
-        self.stop_btn = QPushButton("⏹ Остановить сервер")
-        self.ffplay_btn = QPushButton("Открыть в ffplay")
-        self.vlc_btn = QPushButton("Открыть в VLC")
-        self.log_btn = QPushButton("📋 Лог")
-        self.log_btn.setToolTip("Просмотреть лог FFmpeg")
-        self.log_btn.clicked.connect(self._show_log_dialog)
-        self.close_btn = QPushButton("Закрыть")
+        # --- Кнопки управления потоком ---
+        stream_btn_layout = QHBoxLayout()
+        stream_btn_layout.setSpacing(4)
+        self.start_btn = QPushButton("▶ Запустить сервер")
+        self.stop_btn = QPushButton("⏹ Остановить")
+        self.ffplay_btn = QPushButton("ffplay")
+        self.vlc_btn = QPushButton("VLC")
 
         self.start_btn.clicked.connect(self._start_server)
         self.stop_btn.clicked.connect(self._stop_server)
         self.ffplay_btn.clicked.connect(lambda: self._open_in_player("ffplay"))
         self.vlc_btn.clicked.connect(lambda: self._open_in_player("vlc"))
-        self.close_btn.clicked.connect(self.close)
 
-        btn_layout.addWidget(self.start_btn)
-        btn_layout.addWidget(self.stop_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(self.log_btn)
-        btn_layout.addWidget(self.ffplay_btn)
-        btn_layout.addWidget(self.vlc_btn)
-        btn_layout.addWidget(self.close_btn)
-        layout.addLayout(btn_layout)
+        stream_btn_layout.addWidget(self.start_btn)
+        stream_btn_layout.addWidget(self.stop_btn)
+        stream_btn_layout.addStretch()
+        self.stream_log_btn = QPushButton("📋 Лог")
+        self.stream_log_btn.setToolTip("Просмотреть лог FFmpeg")
+        self.stream_log_btn.clicked.connect(self._show_stream_log_dialog)
+        stream_btn_layout.addWidget(self.stream_log_btn)
+        stream_btn_layout.addWidget(self.ffplay_btn)
+        stream_btn_layout.addWidget(self.vlc_btn)
+        stream_layout.addLayout(stream_btn_layout)
+
+        stream_layout.addStretch()
+        self.mode_tabs.addTab(stream_tab, "Стрим")
+
+        # --- Вкладка "Запись" (вложенная) ---
+        rec_tab = QWidget()
+        rec_layout = QVBoxLayout(rec_tab)
+        rec_layout.setSpacing(6)
+
+        # --- Настройки записи + Наложение текста ---
+        rec_settings_group = QGroupBox("Настройки записи")
+        rec_settings_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        rec_settings_layout = QVBoxLayout(rec_settings_group)
+        rec_settings_layout.setSpacing(4)
+
+        self.rec_tabs = QTabWidget()
+
+        # -- Таб: Пути --
+        rec_paths_tab = QWidget()
+        rec_paths_form = QFormLayout(rec_paths_tab)
+        rec_paths_form.setSpacing(4)
+
+        self.rec_path_edit = QLineEdit()
+        self.rec_path_edit.setPlaceholderText("/home/user/recordings")
+        rec_paths_form.addRow("Путь на сервере:", self.rec_path_edit)
+
+        self.rec_format_combo = QComboBox()
+        self.rec_format_combo.addItem("MKV (рекомендуется)", "mkv")
+        self.rec_format_combo.addItem("MP4", "mp4")
+        self.rec_format_combo.addItem("TS", "ts")
+        self.rec_format_combo.addItem("AVI", "avi")
+        rec_paths_form.addRow("Формат:", self.rec_format_combo)
+
+        self.rec_filename_edit = QLineEdit()
+        self.rec_filename_edit.editingFinished.connect(self._on_filename_edited)
+        rec_paths_form.addRow("Файл записи:", self.rec_filename_edit)
+
+        self.rec_tabs.addTab(rec_paths_tab, "Пути")
+
+        rec_settings_layout.addWidget(self.rec_tabs)
+        rec_layout.addWidget(rec_settings_group)
+
+        # --- Статус + Информация о записи ---
+        rec_info_group = QGroupBox("Информация")
+        rec_info_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        rec_info_layout = QFormLayout(rec_info_group)
+        rec_info_layout.setSpacing(2)
+        self.rec_status_label = QLabel("Запись не активна")
+        self.rec_file_label = QLabel("—")
+        self.rec_size_label = QLabel("—")
+        self.rec_duration_label = QLabel("—")
+        rec_info_layout.addRow("Статус:", self.rec_status_label)
+        rec_info_layout.addRow("Файл:", self.rec_file_label)
+        rec_info_layout.addRow("Размер:", self.rec_size_label)
+        rec_info_layout.addRow("Длительность:", self.rec_duration_label)
+        rec_layout.addWidget(rec_info_group)
+
+        # --- Кнопки записи ---
+        rec_btn_layout = QHBoxLayout()
+        rec_btn_layout.setSpacing(4)
+        self.rec_start_btn = QPushButton("⏺ Начать запись")
+        self.rec_start_btn.clicked.connect(self._start_recording)
+        self.rec_stop_btn = QPushButton("⏹ Остановить")
+        self.rec_stop_btn.clicked.connect(self._stop_recording)
+        self.rec_stop_btn.setEnabled(False)
+        rec_btn_layout.addWidget(self.rec_start_btn)
+        rec_btn_layout.addWidget(self.rec_stop_btn)
+        rec_btn_layout.addStretch()
+        self.rec_log_btn = QPushButton("📋 Лог")
+        self.rec_log_btn.setToolTip("Просмотреть лог записи")
+        self.rec_log_btn.clicked.connect(self._show_rec_log_dialog)
+        rec_btn_layout.addWidget(self.rec_log_btn)
+        rec_layout.addLayout(rec_btn_layout)
+
+        rec_layout.addStretch()
+        self.mode_tabs.addTab(rec_tab, "Запись")
+
+        source_layout.addWidget(self.mode_tabs, 1)
+
+        # --- Собираем верхний TabWidget ---
+        self.tabs = QTabWidget()
+        self.tabs.addTab(source_tab, "Источник")
+        layout.addWidget(self.tabs, 1)
+
+        # --- Лог (внутренний) ---
+        self._log_lines: list[tuple[str, Optional[str]]] = []
+
+        # --- Кнопка закрытия ---
+        close_layout = QHBoxLayout()
+        self.close_btn = QPushButton("Закрыть")
+        self.close_btn.clicked.connect(self.close)
+        close_layout.addStretch()
+        close_layout.addWidget(self.close_btn)
+        layout.addLayout(close_layout)
+
+        # Таймер обновления информации о записи
+        self._rec_info_timer = QTimer(self)
+        self._rec_info_timer.timeout.connect(self._update_rec_info)
+
+        # Обновить имя файла при изменении формата
+        self.rec_format_combo.currentIndexChanged.connect(self._update_rec_filename)
+        self._update_rec_filename()
 
     # -------------------------------------------------------------------
     # Настройки
@@ -577,6 +700,12 @@ class RemoteRecordingDialog(QDialog):
         self.ffmpeg_path_edit.setText(media.ffmpeg_path)
         self.ffplay_path_edit.setText(media.ffplay_path)
         self.vlc_path_edit.setText(media.vlc_path)
+
+        recording_path = getattr(media, 'recording_path', '') or ''
+        if not recording_path:
+            recording_path = "/tmp/recordings"
+        self.rec_path_edit.setText(recording_path)
+        self._update_rec_filename()
 
         # Auto-detect fallback
         for edit, fallback in [
@@ -610,6 +739,7 @@ class RemoteRecordingDialog(QDialog):
         media.ffmpeg_path = self.ffmpeg_path_edit.text() or "ffmpeg"
         media.ffplay_path = self.ffplay_path_edit.text() or "ffplay"
         media.vlc_path = self.vlc_path_edit.text() or "vlc"
+        media.recording_path = self.rec_path_edit.text()
 
         try:
             config.save()
@@ -957,6 +1087,15 @@ class RemoteRecordingDialog(QDialog):
     # Запуск / Остановка
     # -------------------------------------------------------------------
     def _start_server(self) -> None:
+        if self._is_recording:
+            QMessageBox.warning(
+                self,
+                "Запись активна",
+                "Невозможно одновременно запустить стрим и запись.\n"
+                "Сначала остановите запись."
+            )
+            return
+
         self._save_settings()
         self._update_connection_url()
 
@@ -1132,48 +1271,29 @@ class RemoteRecordingDialog(QDialog):
     def _append_log(self, line: str, kind: Optional[str] = None) -> None:
         self._log_lines.append((line, kind))
 
-    def _show_log_dialog(self) -> None:
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Лог FFmpeg")
-        dlg.setMinimumSize(700, 400)
-        layout = QVBoxLayout(dlg)
-        text = QTextEdit()
-        text.setReadOnly(True)
-        text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        text.setAcceptRichText(True)
-        for line, kind in self._log_lines:
-            safe = html_module.escape(line)
-            if kind == "error" or line.startswith("[ERROR]"):
-                text.append(f'<span style="color:#d32f2f;">{safe}</span>')
-            elif kind == "warning":
-                text.append(f'<span style="color:#f57c00;">{safe}</span>')
-            else:
-                text.append(safe)
-        sb = text.verticalScrollBar()
-        sb.setValue(sb.maximum())
-        layout.addWidget(text)
-        btn = QPushButton("Закрыть")
-        btn.clicked.connect(dlg.accept)
-        layout.addWidget(btn)
-        dlg.exec()
-
     # -------------------------------------------------------------------
     # Статус / Кнопки
     # -------------------------------------------------------------------
     def _update_buttons(self) -> None:
         running = self._stream_manager.is_running
-        self.start_btn.setEnabled(not running)
+        recording = self._is_recording
+        self.start_btn.setEnabled(not running and not recording)
         self.stop_btn.setEnabled(running)
         self.ffplay_btn.setEnabled(running)
         self.vlc_btn.setEnabled(running)
+        self.rec_start_btn.setEnabled(not recording and not running)
+        self.rec_stop_btn.setEnabled(recording)
 
     def _update_status_label(self, running: bool) -> None:
         if running:
             self._server_state = "streaming"
             self.status_label.setText("🟢 Стрим активен")
+        elif self._is_recording:
+            self._server_state = "recording"
+            self.status_label.setText("🟡 Запись активна")
         else:
             self._server_state = "stopped"
-            self.status_label.setText("🔴 Сервер остановлен")
+            self.status_label.setText("🔴 Остановлен")
 
     # -------------------------------------------------------------------
     # События
@@ -1194,10 +1314,13 @@ class RemoteRecordingDialog(QDialog):
             if reply != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        if self._is_recording:
+            self._stop_recording()
         self._save_settings()
         self._stream_manager.stop()
         self._kill_player_processes()
         self._cancel_scan_thread()
+        self._rec_info_timer.stop()
         try:
             if self._ssh_check_thread is not None and self._ssh_check_thread.isRunning():
                 self._ssh_check_thread.quit()
@@ -1226,3 +1349,461 @@ class RemoteRecordingDialog(QDialog):
             except RuntimeError:
                 pass
             self._scan_thread = None
+
+    # -------------------------------------------------------------------
+    # Запись (локальное сохранение потока)
+    # -------------------------------------------------------------------
+    def _browse_rec_path(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        path, ok = QInputDialog.getText(
+            self, "Путь на сервере",
+            "Укажите путь для сохранения записей на удалённой машине:",
+            text=self.rec_path_edit.text(),
+        )
+        if ok and path.strip():
+            self.rec_path_edit.setText(path.strip())
+            self._update_rec_filename()
+            self._save_settings()
+
+    def _update_rec_filename(self) -> None:
+        now = datetime.now()
+        host = self.device.host.replace(":", "_").replace("/", "_")
+        fmt = self.rec_format_combo.currentData() if hasattr(self, 'rec_format_combo') else "mkv"
+        filename = f"{host}_{now.strftime('%Y%m%d_%H%M%S')}.{fmt}"
+        self.rec_filename_edit.setText(filename)
+
+    def _on_filename_edited(self) -> None:
+        text = self.rec_filename_edit.text().strip()
+        if not text:
+            self._update_rec_filename()
+            return
+        fmt = self.rec_format_combo.currentData() if hasattr(self, 'rec_format_combo') else "mkv"
+        ext = f".{fmt}"
+        if not text.lower().endswith(ext) and not any(text.lower().endswith(f".{e}") for e in ("mkv", "mp4", "ts", "avi")):
+            text = text.rsplit(".", 1)[0] if "." in text else text
+            text = f"{text}{ext}"
+            self.rec_filename_edit.setText(text)
+
+    def _get_rec_filepath(self) -> str:
+        rec_dir = self.rec_path_edit.text().strip().rstrip("/")
+        if not rec_dir:
+            rec_dir = "/tmp"
+        filename = self.rec_filename_edit.text().strip()
+        return f"{rec_dir}/{filename}"
+
+    
+    def _start_recording(self) -> None:
+        if self._is_recording:
+            return
+
+        if self._stream_manager.is_running:
+            QMessageBox.warning(
+                self,
+                "Стрим активен",
+                "Невозможно одновременно запустить стрим и запись.\n"
+                "Сначала остановите стрим."
+            )
+            return
+
+        self._save_settings()
+        self._update_rec_filename()
+
+        rec_dir = self.rec_path_edit.text().strip().rstrip("/")
+        if not rec_dir:
+            QMessageBox.warning(self, "Ошибка", "Укажите путь для сохранения записи на сервере.")
+            return
+
+        fmt = self.rec_format_combo.currentData()
+        filepath = self._get_rec_filepath()
+        self._rec_filepath = filepath
+        self._is_recording = True
+        self._rec_start_time = time.time()
+        self.rec_status_label.setText("⏺ Запись активна (сервер)")
+        self.rec_file_label.setText(filepath)
+        self.rec_size_label.setText("—")
+        self.rec_duration_label.setText("0:00")
+        self._update_buttons()
+        self._update_status_label(self._stream_manager.is_running)
+
+        self._rec_log_lines.clear()
+        self._append_rec_log(f"[INFO] Запуск записи на сервере: {filepath}")
+
+        self._start_remote_recording(filepath, fmt)
+
+    def _start_remote_recording(self, filepath: str, fmt: str) -> None:
+        try:
+            from src.workers.command.ssh import SSHWorker
+            worker = SSHWorker()
+            client = worker.get_client(self.device)
+        except Exception as e:
+            self._is_recording = False
+            self.rec_status_label.setText("🔴 Ошибка SSH")
+            self._append_rec_log(f"[ERROR] Ошибка подключения: {e}")
+            self._update_buttons()
+            return
+
+        try:
+            rec_dir = os.path.dirname(filepath).replace("\\", "/")
+            client.exec_command(f"mkdir -p {shlex.quote(rec_dir)}")
+            import time as _t
+            _t.sleep(0.3)
+        except Exception:
+            pass
+
+        ffmpeg = self.ffmpeg_path_edit.text() or "ffmpeg"
+        capture_type = self.capture_type_combo.currentData()
+        capture_input = self._get_capture_input()
+        resolution = self.resolution_combo.currentData() or "1280x720"
+        fps = self.fps_combo.currentData() or 25
+        input_format = self.input_format_combo.currentData()
+        codec = self.codec_combo.currentData()
+        bitrate = self.bitrate_edit.text() or "2M"
+
+        env_prefix = ""
+        if capture_type == "x11grab":
+            display = capture_input.split(".")[0] if capture_input else ":0"
+            setup_cmd = (
+                f"USER=$(who | grep -E 'tty|pts' | head -1 | awk '{{print $1}}'); "
+                f"if [ -n \"$USER\" ]; then "
+                f"  XAUTH=$(eval echo ~$USER/.Xauthority); "
+                f"  sudo -u \"$USER\" sh -c 'export DISPLAY={display}; xhost +local:'; "
+                f"else "
+                f"  XAUTH=$HOME/.Xauthority; "
+                f"  export DISPLAY={display}; xhost +local:; "
+                f"fi; "
+                f"echo \"$XAUTH\""
+            )
+            xauth_val = ""
+            try:
+                x_stdin, x_stdout, x_stderr = client.exec_command(setup_cmd)
+                x_stdout.channel.recv_exit_status()
+                xauth_val = x_stdout.read().decode("utf-8", errors="ignore").strip()
+                self._append_rec_log(f"[INFO] xhost setup: {xauth_val}")
+            except Exception as e:
+                self._append_rec_log(f"[WARN] xhost: {e}")
+            env_prefix = f"DISPLAY={display} "
+            if xauth_val:
+                env_prefix += f"XAUTHORITY={shlex.quote(xauth_val)} "
+
+        audio_input_args = ""
+        audio_output_args = ""
+        if self._audio_group.isChecked():
+            audio_source = self.audio_source_combo.currentData() or "pulse"
+            audio_input = self.audio_device_combo.currentData() or self.audio_device_combo.currentText() or "default"
+            audio_codec = self.audio_codec_combo.currentData() or "aac"
+            audio_bitrate = self.audio_bitrate_edit.text() or "128k"
+            audio_input_args = f' -f {audio_source} -ac 2 -ar 48000 -i {shlex.quote(audio_input)}'
+            audio_output_args = f' -c:a {audio_codec} -b:a {audio_bitrate}'
+        else:
+            audio_output_args = ' -an'
+
+        vf_parts = []
+        if resolution:
+            sw, sh_h = resolution.split("x")
+            vf_parts.append(f"scale={sw}:{sh_h}")
+
+        if codec in ("libx264", "libx265"):
+            codec_list = ["-c:v", codec, "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p"]
+        else:
+            codec_list = ["-c:v", codec, "-pix_fmt", "yuv420p"]
+
+        host_tag = self.device.host.replace('.', '_').replace(':', '_')
+        rec_pid = f"/tmp/dnotool_rec_{host_tag}.pid"
+        rec_log = f"/tmp/dnotool_rec_{host_tag}.log"
+
+        self._rec_pid_file = rec_pid
+
+        ffmpeg_args = [
+            ffmpeg, "-err_detect", "ignore_err", "-fflags", "+genpts",
+        ]
+
+        if capture_type == "v4l2":
+            input_format_val = input_format or "mjpeg"
+            ffmpeg_args += ["-f", "v4l2", "-input_format", input_format_val,
+                           "-video_size", resolution, "-framerate", str(fps),
+                           "-i", capture_input]
+        elif capture_type == "x11grab":
+            ffmpeg_args += ["-f", "x11grab", "-framerate", str(fps),
+                           "-i", capture_input or ":0.0"]
+        else:
+            ffmpeg_args += ["-f", capture_type, "-i", capture_input]
+
+        if self._audio_group.isChecked():
+            ffmpeg_args += ["-f", audio_source, "-ac", "2", "-ar", "48000", "-i", audio_input]
+
+        ffmpeg_args += codec_list
+
+        if vf_parts:
+            ffmpeg_args += ["-vf", ",".join(vf_parts)]
+
+        ffmpeg_args += ["-b:v", bitrate, "-r", str(fps)]
+
+        if self._audio_group.isChecked():
+            ffmpeg_args += ["-c:a", audio_codec, "-b:a", audio_bitrate]
+        else:
+            ffmpeg_args += ["-an"]
+
+        ffmpeg_args += ["-y", filepath]
+
+        ffmpeg_cmd_str = " ".join(shlex.quote(a) for a in ffmpeg_args)
+        self._append_rec_log(f"[INFO] ffmpeg command: {ffmpeg_cmd_str}")
+
+        script_lines = ["#!/bin/bash"]
+        if env_prefix:
+            for part in env_prefix.strip().split():
+                script_lines.append(f"export {part}")
+        script_lines.append(f"{ffmpeg_cmd_str} > {shlex.quote(rec_log)} 2>&1 &")
+        script_lines.append(f"echo $! > {shlex.quote(rec_pid)}")
+        script_content = "\n".join(script_lines) + "\n"
+        script_b64 = __import__('base64').b64encode(script_content.encode()).decode()
+
+        rec_script = f"/tmp/dnotool_rec_{host_tag}.sh"
+
+        cmd = f"echo {script_b64} | base64 -d > {shlex.quote(rec_script)} && chmod +x {shlex.quote(rec_script)} && nohup bash {shlex.quote(rec_script)} &"
+
+        self._append_rec_log(f"[INFO] Команда запуска:\n{cmd}")
+
+        self._rec_log_file = rec_log
+
+        try:
+            client.exec_command(cmd)
+            client.close()
+        except Exception as e:
+            self._is_recording = False
+            self.rec_status_label.setText("🔴 Ошибка запуска")
+            self._append_rec_log(f"[ERROR] Ошибка запуска записи: {e}")
+            self._update_buttons()
+            return
+
+        self._rec_info_timer.start(2000)
+        self._append_rec_log("[INFO] Запись запущена на удалённом сервере")
+
+        QTimer.singleShot(3000, self._fetch_remote_log)
+
+    def _stop_recording(self) -> None:
+        if not self._is_recording:
+            return
+
+        self._append_rec_log("[INFO] Остановка записи на сервере...")
+        self._is_recording = False
+        self._rec_info_timer.stop()
+
+        rec_pid = getattr(self, '_rec_pid_file', '')
+        filepath = getattr(self, '_rec_filepath', '')
+        try:
+            from src.workers.command.ssh import SSHWorker
+            worker = SSHWorker()
+            client = worker.get_client(self.device)
+            kill_cmd = ""
+            if rec_pid:
+                rec_script = rec_pid.replace('.pid', '.sh')
+                kill_cmd = (
+                    f'PID=$(cat {shlex.quote(rec_pid)} 2>/dev/null); '
+                    f'[ -n "$PID" ] && kill $PID 2>/dev/null; '
+                    f'rm -f {shlex.quote(rec_pid)} {shlex.quote(rec_script)}; '
+                    f'echo "Stopped PID=$PID"'
+                )
+            elif filepath:
+                kill_cmd = (
+                    f'PID=$(pgrep -f {shlex.quote(filepath)} 2>/dev/null | head -1); '
+                    f'[ -n "$PID" ] && kill $PID 2>/dev/null; '
+                    f'echo "Stopped PID=$PID"'
+                )
+            if kill_cmd:
+                client.exec_command(kill_cmd)
+                client.close()
+                self._append_rec_log("[INFO] Сигнал остановки отправлен")
+        except Exception as e:
+            self._append_rec_log(f"[WARN] Не удалось отправить сигнал остановки: {e}")
+
+        self.rec_status_label.setText("⏹ Запись остановлена")
+        self._update_buttons()
+        self._update_status_label(self._stream_manager.is_running)
+
+    def _on_rec_output(self) -> None:
+        pass
+
+    def _on_rec_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+        pass
+
+    def _update_rec_info(self) -> None:
+        filepath = getattr(self, '_rec_filepath', '')
+        if not filepath or not self._is_recording:
+            return
+
+        rec_log_file = getattr(self, '_rec_log_file', '')
+        rec_pid_file = getattr(self, '_rec_pid_file', '')
+        try:
+            from src.workers.command.ssh import SSHWorker
+            worker = SSHWorker()
+            client = worker.get_client(self.device, timeout=5)
+
+            stdin_s, stdout_s, stderr_s = client.exec_command(
+                f'stat -c "%s" {shlex.quote(filepath)} 2>/dev/null || echo 0'
+            )
+            size_str = stdout_s.read().decode("utf-8", errors="ignore").strip()
+            size = int(size_str) if size_str.isdigit() else 0
+
+            if rec_pid_file:
+                stdin_p, stdout_p, _ = client.exec_command(
+                    f'PID=$(cat {shlex.quote(rec_pid_file)} 2>/dev/null); '
+                    f'if [ -n "$PID" ]; then '
+                    f'  if kill -0 $PID 2>/dev/null; then echo "alive"; else echo "dead"; fi; '
+                    f'else echo "noping"; fi'
+                )
+                pid_status = stdout_p.read().decode("utf-8", errors="ignore").strip()
+            else:
+                pid_status = "noping"
+
+            if pid_status == "dead" and rec_log_file:
+                stdin_l, stdout_l, _ = client.exec_command(
+                    f'tail -30 {shlex.quote(rec_log_file)} 2>/dev/null'
+                )
+                log_tail = stdout_l.read().decode("utf-8", errors="ignore").strip()
+                if log_tail:
+                    for line in log_tail.splitlines():
+                        if line.strip():
+                            self._append_rec_log(f"[REMOTE] {line.strip()}")
+                self._is_recording = False
+                self._rec_info_timer.stop()
+                self.rec_status_label.setText("🔴 Запись упала (процесс завершён)")
+                self._update_buttons()
+                self._update_status_label(self._stream_manager.is_running)
+                client.close()
+                return
+            elif pid_status == "dead":
+                self._append_rec_log("[WARN] ffmpeg процесс завершён, но лог недоступен")
+                self._is_recording = False
+                self._rec_info_timer.stop()
+                self.rec_status_label.setText("🔴 Запись упала")
+                self._update_buttons()
+                self._update_status_label(self._stream_manager.is_running)
+                client.close()
+                return
+
+            client.close()
+
+            if size >= 1024 * 1024 * 1024:
+                self.rec_size_label.setText(f"{size / (1024*1024*1024):.1f} ГБ")
+            elif size >= 1024 * 1024:
+                self.rec_size_label.setText(f"{size / (1024*1024):.1f} МБ")
+            elif size >= 1024:
+                self.rec_size_label.setText(f"{size / 1024:.1f} КБ")
+            else:
+                self.rec_size_label.setText(f"{size} Б")
+        except Exception:
+            self.rec_size_label.setText("—")
+
+        if self._is_recording and hasattr(self, '_rec_start_time'):
+            duration = time.time() - self._rec_start_time
+            mins, secs = divmod(int(duration), 60)
+            self.rec_duration_label.setText(f"{mins}:{secs:02d}")
+
+    def _append_rec_log(self, line: str) -> None:
+        kind = None
+        if line.startswith("[ERROR]"):
+            kind = "error"
+        elif line.startswith("[WARN]"):
+            kind = "warning"
+        elif line.startswith("[INFO]"):
+            kind = "info"
+        self._rec_log_lines.append((line, kind))
+
+    def _show_stream_log_dialog(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Лог FFmpeg (стрим)")
+        dlg.setMinimumSize(700, 400)
+        dlg_layout = QVBoxLayout(dlg)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        text.setAcceptRichText(True)
+        for line, kind in self._log_lines:
+            safe = html_module.escape(line)
+            if kind == "error" or line.startswith("[ERROR]"):
+                text.append(f'<span style="color:#d32f2f;">{safe}</span>')
+            elif kind == "warning":
+                text.append(f'<span style="color:#f57c00;">{safe}</span>')
+            else:
+                text.append(safe)
+        sb = text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+        dlg_layout.addWidget(text)
+        btn = QPushButton("Закрыть")
+        btn.clicked.connect(dlg.accept)
+        dlg_layout.addWidget(btn)
+        dlg.exec()
+
+    def _fetch_remote_log(self) -> None:
+        rec_log_file = getattr(self, '_rec_log_file', '')
+        if not rec_log_file:
+            self._append_rec_log("[WARN] Файл лога на сервере не задан")
+            return
+        try:
+            from src.workers.command.ssh import SSHWorker
+            worker = SSHWorker()
+            client = worker.get_client(self.device, timeout=5)
+            stdin_l, stdout_l, _ = client.exec_command(
+                f'tail -100 {shlex.quote(rec_log_file)} 2>/dev/null'
+            )
+            log_tail = stdout_l.read().decode("utf-8", errors="ignore").strip()
+            client.close()
+            if log_tail:
+                self._append_rec_log("[INFO] --- Лог с сервера (последние 100 строк) ---")
+                for line in log_tail.splitlines():
+                    if line.strip():
+                        self._append_rec_log(f"[REMOTE] {line.strip()}")
+                self._append_rec_log("[INFO] --- Конец лога с сервера ---")
+            else:
+                self._append_rec_log("[INFO] Лог на сервере пуст")
+        except Exception as e:
+            self._append_rec_log(f"[ERROR] Не удалось прочитать лог с сервера: {e}")
+
+    def _show_rec_log_dialog(self) -> None:
+        self._fetch_remote_log()
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Лог записи")
+        dlg.setMinimumSize(700, 400)
+        dlg_layout = QVBoxLayout(dlg)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        text.setAcceptRichText(True)
+        for line, kind in self._rec_log_lines:
+            safe = html_module.escape(line)
+            if kind == "error" or line.startswith("[ERROR]"):
+                text.append(f'<span style="color:#d32f2f;">{safe}</span>')
+            elif kind == "warning":
+                text.append(f'<span style="color:#f57c00;">{safe}</span>')
+            elif kind == "info":
+                text.append(f'<span style="color:#388e3c;">{safe}</span>')
+            else:
+                text.append(safe)
+        sb = text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+        dlg_layout.addWidget(text)
+
+        btn_row = QHBoxLayout()
+        refresh_btn = QPushButton("Обновить с сервера")
+        def _refresh():
+            self._fetch_remote_log()
+            text.clear()
+            for line, kind in self._rec_log_lines:
+                safe = html_module.escape(line)
+                if kind == "error" or line.startswith("[ERROR]"):
+                    text.append(f'<span style="color:#d32f2f;">{safe}</span>')
+                elif kind == "warning":
+                    text.append(f'<span style="color:#f57c00;">{safe}</span>')
+                elif kind == "info":
+                    text.append(f'<span style="color:#388e3c;">{safe}</span>')
+                else:
+                    text.append(safe)
+            sb.setValue(sb.maximum())
+        refresh_btn.clicked.connect(_refresh)
+        btn_row.addWidget(refresh_btn)
+        close_btn = QPushButton("Закрыть")
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        dlg_layout.addLayout(btn_row)
+        dlg.exec()
