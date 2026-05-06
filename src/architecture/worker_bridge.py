@@ -296,20 +296,6 @@ class WorkerBridge(QObject):
             except Exception as e:
                 logger.error(f"WorkerBridge: Error calling abort on worker {worker_id}: {e}")
         
-        thread_stopped = False
-        if worker_id in self._threads:
-            thread = self._threads[worker_id]
-            try:
-                if thread.isRunning():
-                    logger.debug(f"WorkerBridge: Stopping thread for worker {worker_id}")
-                    thread.quit()
-                    thread_stopped = True
-            except RuntimeError:
-                logger.debug(f"WorkerBridge: Thread for worker {worker_id} already deleted")
-                thread_stopped = True
-        
-        self._worker_finished.emit(worker_id, {'aborted': True, 'thread_stopped': thread_stopped})
-        
         return True
     
     def get_worker(self, worker_id: str) -> Optional[QObject]:

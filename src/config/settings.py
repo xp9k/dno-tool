@@ -35,6 +35,9 @@ ICONS: Dict[str, str] = {
     'result_failure': get_asset_path('result_failure.svg'),
     'result_cancelled': get_asset_path('result_cancelled.svg'),
     'result_warning': get_asset_path('result_warning.svg'),
+    'result_pending': get_asset_path('result_pending.svg'),
+    'result_executing': get_asset_path('result_executing.svg'),
+    'result_connection_lost': get_asset_path('result_connection_lost.svg'),
     'key_exists': get_asset_path('key_exists.svg'),
     'key_missing': get_asset_path('key_missing.svg'),
     'menu_file': get_asset_path('menu_file.svg'),
@@ -132,6 +135,7 @@ class SSHConfig:
     strict_host_checking: bool = False  # Enable strict host key checking
     command_timeout: int = 30           # Timeout in seconds
     ssh_connect_timeout: int = 10       # SSH connection timeout in seconds
+    connect_timeout: int = 5            # TCP connect timeout in seconds (for offline hosts)
     max_as_completed_timeout: int = 600 # Maximum async completed timeout in seconds
 
 @dataclass

@@ -45,6 +45,7 @@ class CommandWorker(BaseWorker):
 
     result_ready = Signal(DeviceModel, bool, str)
     progress_update = Signal(DeviceModel, str)
+    device_started = Signal(DeviceModel)
 
     started = Signal()
     finished = Signal()
@@ -99,6 +100,9 @@ class CommandWorker(BaseWorker):
 
         if self.is_aborting:
             logger.info("CommandWorker: Выполнение прервано до запуска")
+            for device in self.devices:
+                self.result_ready.emit(device, False, "Aborted by user")
+                error_count += 1
             self.finished.emit()
             return
 
@@ -118,10 +122,6 @@ class CommandWorker(BaseWorker):
                 future_to_device[future] = device
 
             for future in as_completed(future_to_device):
-                if self.is_aborting:
-                    logger.info("CommandWorker: Прерывание - пропуск оставшихся результатов")
-                    break
-
                 device = future_to_device[future]
                 try:
                     final_output, success = future.result()
@@ -154,6 +154,12 @@ class CommandWorker(BaseWorker):
                             data={'device': device.host, 'error': str(e)}
                         )
 
+            if self.is_aborting:
+                for future, device in future_to_device.items():
+                    if not future.done():
+                        self.result_ready.emit(device, False, "Aborted by user")
+                        error_count += 1
+
         with self._executor_lock:
             self._active_executors.clear()
 
@@ -181,6 +187,8 @@ class CommandWorker(BaseWorker):
         if self.is_aborting:
             logger.info(f"[{device.host}] Выполнение прервано")
             return "Aborted by user", False
+
+        self.device_started.emit(device)
 
         ssh_worker = SSHWorker(progress_callback=self)
         sftp_worker = SFTPWorker(progress_callback=self)

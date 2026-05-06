@@ -14,9 +14,12 @@ class CommandResultTable(QTableWidget):
         super().__init__(parent)
         self.device_rows = {}
         self.device_outputs = {}
+        self._icon_pending = QIcon(ICONS['result_pending'])
+        self._icon_executing = QIcon(ICONS['result_executing'])
         self._icon_success = QIcon(ICONS['result_success'])
         self._icon_failure = QIcon(ICONS['result_failure'])
-        self._icon_cancelled = QIcon(ICONS['result_warning'])
+        self._icon_cancelled = QIcon(ICONS['result_cancelled'])
+        self._icon_connection_lost = QIcon(ICONS['result_connection_lost'])
         self.setup_ui()
         self.setup_context_menu()
 
@@ -161,10 +164,21 @@ class CommandResultTable(QTableWidget):
             self.insertRow(row)
             self.setItem(row, 0, QTableWidgetItem(device.name))
             self.setItem(row, 1, QTableWidgetItem(""))
-            self.setItem(row, 2, QTableWidgetItem("Ожидание"))
+            self._set_status_item(row, "Ожидание", self._icon_pending)
             self.setItem(row, 3, QTableWidgetItem(str(device.iid)))
             self.device_rows[device.iid] = row
             self.device_outputs[device.iid] = ""
+
+    def set_executing(self, device: DeviceModel):
+        """Set status to executing (connection/command started) for a device"""
+        if device.iid in self.device_rows:
+            row = self.device_rows[device.iid]
+
+            status_item = self.item(row, 2)
+            if status_item and status_item.text() in ("Отменено", "Потеря связи", "Успех", "Неудача"):
+                return
+
+            self._set_status_item(row, "Выполнение", self._icon_executing)
 
     def update_progress(self, device: DeviceModel, current_output: str):
         """Update progress for host by appending current fragment to accumulated output"""
@@ -173,7 +187,7 @@ class CommandResultTable(QTableWidget):
                 row = self.device_rows[device.iid]
 
                 status_item = self.item(row, 2)
-                if status_item and status_item.text() == "Отменено":
+                if status_item and status_item.text() in ("Отменено", "Потеря связи"):
                     return
 
                 chunk = current_output or ""
@@ -183,7 +197,7 @@ class CommandResultTable(QTableWidget):
                 full = self.device_outputs[device.iid]
                 preview = full[:50] + "..." if len(full) > 50 else full
                 self.setItem(row, 1, QTableWidgetItem(preview))
-                self.setItem(row, 2, QTableWidgetItem('Выполнение'))
+                self._set_status_item(row, 'Выполнение', self._icon_executing)
         except Exception as e:
             print(e)
 
@@ -200,7 +214,7 @@ class CommandResultTable(QTableWidget):
             row = self.device_rows[device.iid]
 
             status_item = self.item(row, 2)
-            if status_item and status_item.text() == "Отменено":
+            if status_item and status_item.text() in ("Отменено", "Потеря связи"):
                 return
 
             if success:
@@ -217,6 +231,9 @@ class CommandResultTable(QTableWidget):
                 if "aborted" in error_text.lower():
                     self.setItem(row, 1, QTableWidgetItem(error_text))
                     self._set_status_item(row, "Отменено", self._icon_cancelled)
+                elif "connection lost" in error_text.lower() or "потеря связи" in error_text.lower():
+                    self.setItem(row, 1, QTableWidgetItem(error_text))
+                    self._set_status_item(row, "Потеря связи", self._icon_connection_lost)
                 else:
                     self.setItem(row, 1, QTableWidgetItem(error_text))
                     self._set_status_item(row, "Неудача", self._icon_failure)

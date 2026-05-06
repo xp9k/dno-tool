@@ -124,7 +124,9 @@ class KeyInstallerWorker(BaseWorker):
                             password=creds.password,
                             pkey=creds.private_key,
                             port=port,
-                            timeout=15)
+                            timeout=config.app.ssh.connect_timeout,
+                            banner_timeout=config.app.ssh.connect_timeout,
+                            auth_timeout=config.app.ssh.ssh_connect_timeout)
                 sftp = ssh.open_sftp()
                 try:
                     sftp.mkdir('.ssh')

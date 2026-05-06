@@ -54,20 +54,48 @@ class SFTPWorker(BaseCommandExecutor):
             (вывод, успех)
         """
         if self.aborting:
-            logger.info(f"[{device.host}] SFTP выполнение прербано до подключения")
+            logger.info(f"[{device.host}] SFTP выполнение прервано до подключения")
             return "Aborted by user", False
 
         output = []
         result = None
         logger.info(f"[{device.host}] Начало SFTP операции")
 
-        if self.aborting:
-            logger.info(f"[{device.host}] SFTP выполнение прервано до подключения")
-            return "Aborted by user", False
-
         # Создание подключения
-        client = self.get_client(device, timeout)
-        success = False
+        try:
+            client = self.get_client(device, timeout)
+        except socket.timeout as e:
+            error_msg = f"Connection timeout: не удалось подключиться к {device.host} за {config.app.ssh.connect_timeout}с"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except ConnectionRefusedError as e:
+            error_msg = f"Connection refused: подключение отклонено хостом {device.host}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except ConnectionError as e:
+            error_msg = f"Connection error: {str(e)}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except paramiko.AuthenticationException as e:
+            error_msg = f"Ошибка аутентификации: {str(e)}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except Exception as e:
+            error_msg = str(e)
+            err_lower = error_msg.lower()
+            if any(kw in err_lower for kw in ('timed out', 'timeout', 'время ожидания')):
+                error_msg = f"Connection timeout: не удалось подключиться к {device.host} за {config.app.ssh.connect_timeout}с"
+            elif any(kw in err_lower for kw in ('refused', 'отклонено')):
+                error_msg = f"Connection refused: подключение отклонено хостом {device.host}"
+            elif any(kw in err_lower for kw in ('unreachable', 'no route', 'недоступен')):
+                error_msg = f"Host unreachable: хост {device.host} недоступен"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
 
         try:
             # Парсинг команды
@@ -140,13 +168,23 @@ class SFTPWorker(BaseCommandExecutor):
             success = False
 
         except paramiko.SSHException as e:
-            error_msg = f"Ошибка SSH: {str(e)}"
+            err_str = str(e).lower()
+            if any(kw in err_str for kw in ('session', 'channel', 'transport', 'connection')):
+                error_msg = f"Connection lost: потеря связи с хостом {device.host} ({str(e)})"
+            else:
+                error_msg = f"Ошибка SSH: {str(e)}"
             logger.error(f"[{device.host}] {error_msg}")
             self.emit_progress(device, error_msg)
             success = False
 
         except socket.timeout as e:
-            error_msg = f"Перевышено время ожидания: {str(e)}"
+            error_msg = f"Connection lost: потеря связи с хостом {device.host} (timeout)"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            success = False
+
+        except (ConnectionError, OSError) as e:
+            error_msg = f"Connection lost: потеря связи с хостом {device.host} ({str(e)})"
             logger.error(f"[{device.host}] {error_msg}")
             self.emit_progress(device, error_msg)
             success = False

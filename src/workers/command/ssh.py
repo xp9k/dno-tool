@@ -62,8 +62,38 @@ class SSHWorker(BaseCommandExecutor):
             transport = client.get_transport()
             transport.set_keepalive(15)
             session = self.get_session(client)
+        except socket.timeout as e:
+            error_msg = f"Connection timeout: не удалось подключиться к {device.host} за {config.app.ssh.connect_timeout}с"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except ConnectionRefusedError as e:
+            error_msg = f"Connection refused: подключение отклонено хостом {device.host}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except ConnectionError as e:
+            error_msg = f"Connection error: {str(e)}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
+        except paramiko.AuthenticationException as e:
+            error_msg = f"Authentication error: {str(e)}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
         except Exception as e:
-            return str(e), False
+            error_msg = str(e)
+            err_lower = error_msg.lower()
+            if any(kw in err_lower for kw in ('timed out', 'timeout', 'время ожидания')):
+                error_msg = f"Connection timeout: не удалось подключиться к {device.host} за {config.app.ssh.connect_timeout}с"
+            elif any(kw in err_lower for kw in ('refused', 'отклонено')):
+                error_msg = f"Connection refused: подключение отклонено хостом {device.host}"
+            elif any(kw in err_lower for kw in ('unreachable', 'no route', 'недоступен')):
+                error_msg = f"Host unreachable: хост {device.host} недоступен"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            return error_msg, False
 
         start_time = time.time()
         timed_out = False
@@ -86,7 +116,7 @@ class SSHWorker(BaseCommandExecutor):
             while not self.aborting:
                 # Проверка живости соединения
                 if not transport.is_active():
-                    error_msg = "SSH connection lost"
+                    error_msg = "Connection lost: потеря связи с хостом во время выполнения"
                     logger.error(f"[{device.host}] {error_msg}")
                     success = False
                     break
@@ -145,8 +175,16 @@ class SSHWorker(BaseCommandExecutor):
                 success = False
                 result = (error_msg, False)
 
+            elif not transport.is_active():
+                error_msg = "Connection lost: потеря связи с хостом во время выполнения"
+                logger.error(f"[{device.host}] {error_msg}")
+                output.append(error_msg)
+                self.emit_progress(device, error_msg)
+                success = False
+                result = (error_msg, False)
+
         except socket.timeout as e:
-            error_msg = f"Connection timeout: {str(e)}"
+            error_msg = f"Connection lost: потеря связи с хостом {device.host} (timeout)"
             logger.error(f"[{device.host}] {error_msg}")
             self.emit_progress(device, error_msg)
             success = False
@@ -160,7 +198,18 @@ class SSHWorker(BaseCommandExecutor):
             result = (error_msg, False)
 
         except paramiko.SSHException as e:
-            error_msg = f"SSH error: {str(e)}"
+            err_str = str(e).lower()
+            if any(kw in err_str for kw in ('session', 'channel', 'transport', 'connection')):
+                error_msg = f"Connection lost: потеря связи с хостом {device.host} ({str(e)})"
+            else:
+                error_msg = f"SSH error: {str(e)}"
+            logger.error(f"[{device.host}] {error_msg}")
+            self.emit_progress(device, error_msg)
+            success = False
+            result = (error_msg, False)
+
+        except (ConnectionError, OSError) as e:
+            error_msg = f"Connection lost: потеря связи с хостом {device.host} ({str(e)})"
             logger.error(f"[{device.host}] {error_msg}")
             self.emit_progress(device, error_msg)
             success = False

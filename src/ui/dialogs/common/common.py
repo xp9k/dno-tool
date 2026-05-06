@@ -138,12 +138,18 @@ class ConfigDialog(QDialog):
         self.command_timeout.setValue(config.app.ssh.command_timeout)
         self.command_timeout.setSuffix(" сек")
 
+        self.connect_timeout = QSpinBox()
+        self.connect_timeout.setRange(1, 60)
+        self.connect_timeout.setValue(config.app.ssh.connect_timeout)
+        self.connect_timeout.setSuffix(" сек")
+
         # Add fields to SSH group
         ssh_layout.addRow("Пользователь:", self.username)
         ssh_layout.addRow("Пароль:", self.password)
         ssh_layout.addRow("Порт:", self.port)
         ssh_layout.addRow("Строгая проверка ключей:", self.strict_host_checking)
         ssh_layout.addRow("Таймаут команды:", self.command_timeout)
+        ssh_layout.addRow("Таймаут подключения:", self.connect_timeout)
         
         ssh_group.setLayout(ssh_layout)
         main_layout.addWidget(ssh_group)
@@ -199,6 +205,7 @@ class ConfigDialog(QDialog):
         config.app.ssh.port = self.port.value()
         config.app.ssh.strict_host_checking = self.strict_host_checking.isChecked()
         config.app.ssh.command_timeout = self.command_timeout.value()
+        config.app.ssh.connect_timeout = self.connect_timeout.value()
         config.app.network.thread_count = self.thread_count.value()
         
         # Сохраняем новые настройки пинга

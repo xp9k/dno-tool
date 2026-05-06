@@ -638,7 +638,8 @@ class SFTPDialog(QDialog):
                 port=port,
                 username=creds.username,
                 password=creds.password,
-                timeout=config.app.ssh.ssh_connect_timeout,
+                timeout=config.app.ssh.connect_timeout,
+                banner_timeout=config.app.ssh.connect_timeout,
                 auth_timeout=config.app.ssh.ssh_connect_timeout
             )
             

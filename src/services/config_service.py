@@ -46,6 +46,7 @@ class ConfigService(BaseService):
             'port': self._config.app.ssh.port,
             'strict_host_checking': self._config.app.ssh.strict_host_checking,
             'command_timeout': self._config.app.ssh.command_timeout,
+            'connect_timeout': self._config.app.ssh.connect_timeout,
             'ssh_connect_timeout': self._config.app.ssh.ssh_connect_timeout,
             'max_as_completed_timeout': self._config.app.ssh.max_as_completed_timeout,
         }
@@ -94,7 +95,8 @@ class ConfigService(BaseService):
         password: str = None,
         port: int = None,
         strict_host_checking: bool = None,
-        command_timeout: int = None
+        command_timeout: int = None,
+        connect_timeout: int = None
     ) -> bool:
         """
         Обновить SSH настройки.
@@ -105,6 +107,7 @@ class ConfigService(BaseService):
             port: Новый порт
             strict_host_checking: Строгая проверка ключей
             command_timeout: Таймаут команд
+            connect_timeout: Таймаут подключения (для оффлайн хостов)
         
         Returns:
             True если успешно
@@ -120,6 +123,8 @@ class ConfigService(BaseService):
                 self._config.app.ssh.strict_host_checking = strict_host_checking
             if command_timeout is not None:
                 self._config.app.ssh.command_timeout = command_timeout
+            if connect_timeout is not None:
+                self._config.app.ssh.connect_timeout = connect_timeout
             
             self._logger.info("ConfigService: SSH settings updated")
             return True
@@ -328,6 +333,11 @@ class ConfigService(BaseService):
                 timeout = ssh['command_timeout']
                 if not isinstance(timeout, int) or timeout < 1:
                     return False, f"Неверный таймаут команд: {timeout}"
+            
+            if 'connect_timeout' in ssh:
+                timeout = ssh['connect_timeout']
+                if not isinstance(timeout, int) or timeout < 1:
+                    return False, f"Неверный таймаут подключения: {timeout}"
         
         # Проверка сетевых настроек
         if 'network' in config_data:
@@ -366,6 +376,7 @@ class ConfigService(BaseService):
             self._config.app.ssh.port = 22
             self._config.app.ssh.strict_host_checking = False
             self._config.app.ssh.command_timeout = 30
+            self._config.app.ssh.connect_timeout = 5
             
             # Сброс сетевых настроек
             self._config.app.network.ping_timeout = 2.0

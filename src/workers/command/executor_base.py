@@ -133,7 +133,7 @@ class BaseCommandExecutor(ABC):
 
         Args:
             device: Устройство для подключения
-            timeout: Таймаут подключения
+            timeout: Таймаут выполнения команды (используется как таймаут сессии)
 
         Returns:
             Подключенный SSH клиент
@@ -158,9 +158,13 @@ class BaseCommandExecutor(ABC):
         hostname = device.host
         port = device.port or config.app.ssh.port or 22
 
+        # Отдельный таймаут для установки TCP-соединения (быстрый отказ при оффлайн)
+        connect_timeout = config.app.ssh.connect_timeout
+
         logger.info(
             f"Подключение к {device.host} "
-            f"(Порт: {port}, Пользователь: {creds.username})"
+            f"(Порт: {port}, Пользователь: {creds.username}, "
+            f"Connect timeout: {connect_timeout}s)"
         )
 
         try:
@@ -170,7 +174,9 @@ class BaseCommandExecutor(ABC):
                 username=creds.username,
                 password=creds.password,
                 pkey=creds.private_key,
-                timeout=timeout
+                timeout=connect_timeout,
+                banner_timeout=connect_timeout,
+                auth_timeout=connect_timeout
             )
             logger.info(f"Успешно подключено к {device.host}")
         except Exception as e:

@@ -756,24 +756,22 @@ class MainWindow(QWidget):
 
     def closeEvent(self, event):
         """Handle main window close event"""
-        # ARCHITECTURE: Сохранение состояния UI перед закрытием
         self._save_view_state()
-
-        # ARCHITECTURE: Очистка архитектурных компонентов
         self._cleanup_architecture()
 
-        # Останавливаем все индивидуальные таймеры хостов
         from src.workers.network import get_host_ping_timer_manager
         get_host_ping_timer_manager().stop_all()
 
         self.listview.clear_devices()
         self.treeview.clear_devices()
-        # self.result_table.clear_results()
 
-        # Прерываем активный worker при закрытии окна
         if hasattr(self, 'current_worker_id') and self.current_worker_id:
             logger.debug(f"MainWindow: Aborting worker on close: {self.current_worker_id}")
             self.worker_bridge.abort_worker(self.current_worker_id)
+            thread = self.worker_bridge._threads.get(self.current_worker_id)
+            if thread and thread.isRunning():
+                thread.quit()
+                thread.wait(3000)
         elif hasattr(self, 'worker') and self.command_executed and self.worker is not None:
             logger.debug("MainWindow: Aborting worker directly on close")
             self.worker.abort()
@@ -1100,13 +1098,14 @@ class MainWindow(QWidget):
 
 
     def on_execute_thread_finished(self):
+        if not self.command_executed:
+            return
         self.command_executed = False
         self.execute_button.setEnabled(True)
         self.execute_button.setVisible(True)
         self.command_abort_button.setEnabled(False)
         self.command_abort_button.setVisible(False)
         
-        # Очищаем worker_id при завершении
         if hasattr(self, 'current_worker_id'):
             self.current_worker_id = None
         
@@ -1275,6 +1274,7 @@ class MainWindow(QWidget):
         self.current_worker_id = worker_id
         
         # Подключаем сигналы результата
+        self.worker.device_started.connect(self.result_table.set_executing)
         self.worker.progress_update.connect(self.result_table.update_progress)
         self.worker.result_ready.connect(self.result_table.set_result)
         

@@ -89,7 +89,16 @@ class BaseCommandResultDialog(QDialog):
                 self.text_edit.setTextCursor(cursor)
                 self.text_edit.insertPlainText(output)
                 self.move_cursor_to_end()
-            self.status_label.setText(f"Статус: {('Успех' if success else 'Неудача')}")
+
+            if success:
+                status_text = "Успех"
+            elif output and "connection lost" in output.lower():
+                status_text = "Потеря связи"
+            elif output and "aborted" in output.lower():
+                status_text = "Отменено"
+            else:
+                status_text = "Неудача"
+            self.status_label.setText(f"Статус: {status_text}")
             self.move_cursor_to_end()
         except Exception:
             pass
