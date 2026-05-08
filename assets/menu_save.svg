@@ -1,8 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <rect x="20" y="16" width="88" height="96" rx="8" fill="#2E86DE"/>
-  <rect x="32" y="28" width="64" height="24" rx="4" fill="#FFFFFF" opacity="0.15"/>
-  <rect x="36" y="32" width="56" height="16" rx="3" fill="#FFFFFF" opacity="0.3"/>
-  <rect x="36" y="60" width="56" height="44" rx="4" fill="#54A0FF" opacity="0.2"/>
-  <rect x="42" y="68" width="36" height="4" rx="2" fill="#FFFFFF" opacity="0.4"/>
-  <rect x="42" y="78" width="24" height="4" rx="2" fill="#FFFFFF" opacity="0.3"/>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+
+    <linearGradient id="disk" x1="32" y1="24" x2="96" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#D1D5DB"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)"/>
+
+  <!-- Floppy Disk -->
+  <g filter="url(#shadow)">
+    <path d="M36 24H80L96 40V92C96 98.6274 90.6274 104 84 104H44C37.3726 104 32 98.6274 32 92V28C32 25.7909 33.7909 24 36 24Z"
+          fill="url(#disk)"/>
+
+    <!-- Top Label -->
+    <rect x="44" y="32" width="32" height="16" rx="4" fill="#7C3AED"/>
+
+    <!-- Metal shutter -->
+    <rect x="76" y="32" width="8" height="20" rx="2" fill="#9CA3AF"/>
+
+    <!-- Save Arrow -->
+    <circle cx="64" cy="76" r="20" fill="#06B6D4"/>
+
+    <path d="M64 64V84"
+          stroke="white"
+          stroke-width="6"
+          stroke-linecap="round"/>
+
+    <path d="M54 74L64 84L74 74"
+          stroke="white"
+          stroke-width="6"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
 </svg>

@@ -8,7 +8,9 @@ from PySide6.QtWidgets import (
     QProgressBar, QPushButton, QStatusBar
 )
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QIcon
 
+from src.config import ICONS
 from src.domain.models.device import DeviceModel
 from src.workers.command.executor_base import get_credentials
 from src.logger import logger
@@ -873,6 +875,7 @@ class DeviceInfoDialog(QDialog):
         bottom_bar.addWidget(self.status_label, 1)
 
         self.save_btn = QPushButton("Сохранить...")
+        self.save_btn.setIcon(QIcon(ICONS.get('menu_save', '')))
         self.save_btn.setFixedWidth(100)
         self.save_btn.clicked.connect(self._save_report)
         bottom_bar.addWidget(self.save_btn)

@@ -381,7 +381,8 @@ class PolkitEditorDialog(QDialog):
         self.status_label.setMinimumWidth(200)
         bottom_bar.addWidget(self.status_label, 1)
 
-        self.save_btn = QPushButton("💾 Сохранить")
+        self.save_btn = QPushButton("Сохранить")
+        self.save_btn.setIcon(QIcon(ICONS.get('menu_save', '')))
         self.save_btn.clicked.connect(self._save_current_policy)
         self.save_btn.setMinimumHeight(28)
         self.save_btn.setVisible(False)
