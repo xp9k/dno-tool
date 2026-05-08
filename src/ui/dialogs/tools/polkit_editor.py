@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QSplitter, QTreeView,
     QLabel, QPushButton, QMessageBox, QComboBox, QLineEdit,
     QHeaderView, QStatusBar, QWidget, QFormLayout, QGroupBox,
-    QProgressBar, QScrollArea
+    QProgressBar, QScrollArea, QDialogButtonBox
 )
 
 from src.config import ICONS
@@ -312,17 +312,6 @@ class PolkitEditorDialog(QDialog):
         top_layout.addWidget(self.refresh_btn)
         layout.addLayout(top_layout)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("%p%")
-        self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
-
-        self.status_label = QLabel("")
-        layout.addWidget(self.status_label)
-
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Левый столбец: список политик
@@ -379,17 +368,30 @@ class PolkitEditorDialog(QDialog):
 
         layout.addWidget(self.splitter, 1)
 
+        bottom_bar = QHBoxLayout()
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setFixedWidth(200)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setVisible(False)
+        bottom_bar.addWidget(self.progress_bar)
+
+        self.status_label = QLabel("")
+        self.status_label.setMinimumWidth(200)
+        bottom_bar.addWidget(self.status_label, 1)
+
         self.save_btn = QPushButton("💾 Сохранить")
         self.save_btn.clicked.connect(self._save_current_policy)
-        self.save_btn.setMinimumHeight(36)
+        self.save_btn.setMinimumHeight(28)
         self.save_btn.setVisible(False)
-        save_layout = QHBoxLayout()
-        save_layout.addStretch()
-        save_layout.addWidget(self.save_btn)
-        layout.addLayout(save_layout)
+        bottom_bar.addWidget(self.save_btn)
 
-        self.statusbar = QStatusBar()
-        layout.addWidget(self.statusbar)
+        btn_box = QDialogButtonBox(QDialogButtonBox.Ok)
+        btn_box.accepted.connect(self.accept)
+        bottom_bar.addWidget(btn_box)
+
+        layout.addLayout(bottom_bar)
 
     def _clear_detail_widgets(self):
         while self.detail_layout.count():
@@ -551,7 +553,7 @@ class PolkitEditorDialog(QDialog):
         self._populate_policy_list()
         count = len(policies)
         self.status_label.setText(f"Загружено политик: {count}")
-        self.statusbar.showMessage(f"Политик: {count}", 5000)
+        self.status_label.setText(f"Политик: {count}")
 
     def _populate_policy_list(self):
         self.policy_model.clear()
@@ -593,7 +595,7 @@ class PolkitEditorDialog(QDialog):
             self._show_policy_details(action_id)
 
     def _save_policy(self, action_id: str, new_data: dict):
-        self.statusbar.showMessage(f"Сохранение политики {action_id}...")
+        self.status_label.setText(f"Сохранение политики {action_id}...")
         self.refresh_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
         self.save_btn.setText("⏳ Сохранение...")
@@ -612,7 +614,7 @@ class PolkitEditorDialog(QDialog):
             self.save_btn.setText("💾 Сохранить")
 
         if success:
-            self.statusbar.showMessage(message, 5000)
+            self.status_label.setText(message)
             action_id = self._save_thread.action_id if self._save_thread else None
             new_data = self._save_thread.data if self._save_thread else None
             if action_id and new_data:
@@ -621,10 +623,10 @@ class PolkitEditorDialog(QDialog):
                     self._show_policy_details(action_id)
             QMessageBox.information(self, "Успешно", message)
         else:
-            self.statusbar.showMessage(f"Ошибка: {message}", 10000)
+            self.status_label.setText(f"Ошибка: {message}")
             QMessageBox.critical(self, "Ошибка сохранения", message)
 
-    def closeEvent(self, event):
+    def _stop_threads(self):
         self._closing = True
 
         if self._load_thread is not None:
@@ -632,6 +634,17 @@ class PolkitEditorDialog(QDialog):
 
         for thread in (self._load_thread, self._save_thread):
             if thread is not None and thread.isRunning():
+                thread.blockSignals(True)
                 thread.wait(5000)
 
+    def closeEvent(self, event):
+        self._stop_threads()
         event.accept()
+
+    def accept(self):
+        self._stop_threads()
+        super().accept()
+
+    def reject(self):
+        self._stop_threads()
+        super().reject()

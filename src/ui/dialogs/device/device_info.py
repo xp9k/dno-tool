@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QTableWidget, QTableWidgetItem, QHeaderView, QLabel,
     QSplitter, QMessageBox, QAbstractItemView, QWidget, QDialogButtonBox,
-    QProgressBar, QPushButton
+    QProgressBar, QPushButton, QStatusBar
 )
 from PySide6.QtCore import Qt, QThread, Signal
 
@@ -714,6 +714,7 @@ class DeviceInfoWorker(QThread):
         self.device = device
         self.categories = categories
         self._aborting = False
+        self._client = None
 
     def run(self):
         import paramiko
@@ -727,10 +728,12 @@ class DeviceInfoWorker(QThread):
         try:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self._client = client
             port = self.device.port or config.app.ssh.port
             creds = get_credentials(self.device, use_key=True)
 
-            self.progress_signal.emit(0, f"Подключение к {self.device.host}...")
+            if not self._aborting:
+                self.progress_signal.emit(0, f"Подключение к {self.device.host}...")
             client.connect(
                 hostname=self.device.host,
                 port=port,
@@ -746,7 +749,8 @@ class DeviceInfoWorker(QThread):
 
                 current += 1
                 percent = int((current / total) * 100)
-                self.progress_signal.emit(percent, f"Получение: {cat_name}...")
+                if not self._aborting:
+                    self.progress_signal.emit(percent, f"Получение: {cat_name}...")
                 cat_results = {}
 
                 for cmd_name, cmd_text in cat_data.get("commands", {}).items():
@@ -757,16 +761,24 @@ class DeviceInfoWorker(QThread):
                         output = stdout.read().decode('utf-8', errors='replace')
                         cat_results[cmd_name] = output
                     except Exception as e:
+                        if self._aborting:
+                            break
                         cat_results[cmd_name] = f"ERROR: {e}"
+
+                if self._aborting:
+                    break
 
                 all_results[cat_name] = cat_results
                 self.finished_signal.emit(cat_name, cat_results)
 
-            self.all_finished_signal.emit(all_results)
+            if not self._aborting:
+                self.all_finished_signal.emit(all_results)
 
         except Exception as e:
-            self.error_signal.emit("connection", f"Ошибка подключения: {e}")
+            if not self._aborting:
+                self.error_signal.emit("connection", f"Ошибка подключения: {e}")
         finally:
+            self._client = None
             if client:
                 try:
                     client.close()
@@ -775,6 +787,17 @@ class DeviceInfoWorker(QThread):
 
     def abort(self):
         self._aborting = True
+        if self._client:
+            try:
+                transport = self._client.get_transport()
+                if transport:
+                    transport.close()
+            except Exception:
+                pass
+            try:
+                self._client.close()
+            except Exception:
+                pass
 
 
 class DeviceInfoDialog(QDialog):
@@ -782,6 +805,7 @@ class DeviceInfoDialog(QDialog):
         super().__init__(parent)
         self.device = device
         self.worker = None
+        self._closing = False
         self._raw_data = {}
         self._parsed_data = {}
         self._setup_ui()
@@ -835,29 +859,29 @@ class DeviceInfoDialog(QDialog):
         splitter.setSizes([220, 780])
         layout.addWidget(splitter, stretch=1)
 
-        bottom_layout = QHBoxLayout()
-
-        self.status_label = QLabel("")
-        self.status_label.setMinimumWidth(200)
-        bottom_layout.addWidget(self.status_label, stretch=1)
+        bottom_bar = QHBoxLayout()
 
         self.status_progress = QProgressBar()
         self.status_progress.setRange(0, 100)
         self.status_progress.setFixedWidth(200)
-        self.status_progress.setTextVisible(True)
+        self.status_progress.setTextVisible(False)
         self.status_progress.setVisible(False)
-        bottom_layout.addWidget(self.status_progress)
+        bottom_bar.addWidget(self.status_progress)
+
+        self.status_label = QLabel("")
+        self.status_label.setMinimumWidth(200)
+        bottom_bar.addWidget(self.status_label, 1)
 
         self.save_btn = QPushButton("Сохранить...")
         self.save_btn.setFixedWidth(100)
         self.save_btn.clicked.connect(self._save_report)
-        bottom_layout.addWidget(self.save_btn)
+        bottom_bar.addWidget(self.save_btn)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok)
         buttons.accepted.connect(self.accept)
-        bottom_layout.addWidget(buttons)
+        bottom_bar.addWidget(buttons)
 
-        layout.addLayout(bottom_layout)
+        layout.addLayout(bottom_bar)
 
         self._populate_tree()
         self._show_summary()
@@ -970,6 +994,8 @@ class DeviceInfoDialog(QDialog):
             self.refresh_btn.setEnabled(False)
 
     def _on_category_data(self, cat_name: str, raw_results: dict):
+        if self._closing:
+            return
         self._raw_data[cat_name] = raw_results
         cat_config = INFO_CATEGORIES.get(cat_name, {})
         parsers = cat_config.get("parse", {})
@@ -1012,14 +1038,20 @@ class DeviceInfoDialog(QDialog):
                 break
 
     def _on_error(self, error_type: str, message: str):
+        if self._closing:
+            return
         self.status_progress.setVisible(False)
         self.status_label.setText(f"Ошибка: {message}")
 
     def _on_progress(self, percent: int, msg: str):
+        if self._closing:
+            return
         self.status_progress.setValue(percent)
         self.status_label.setText(msg)
 
     def _on_all_finished(self, all_results: dict):
+        if self._closing:
+            return
         self.status_progress.setVisible(False)
         self.status_label.setText("Информация загружена")
         if self.refresh_btn:
@@ -1081,14 +1113,22 @@ class DeviceInfoDialog(QDialog):
                 self.table.selectRow(index.row())
         return super().eventFilter(obj, event)
 
-    def closeEvent(self, event):
-        if self.worker and self.worker.isRunning():
+    def _stop_threads(self):
+        self._closing = True
+        if self.worker is not None:
             self.worker.abort()
-            self.worker.wait(3000)
-        super().closeEvent(event)
+            self.worker.blockSignals(True)
+            if self.worker.isRunning():
+                self.worker.wait(5000)
+
+    def closeEvent(self, event):
+        self._stop_threads()
+        event.accept()
 
     def reject(self):
-        if self.worker and self.worker.isRunning():
-            self.worker.abort()
-            self.worker.wait(3000)
+        self._stop_threads()
         super().reject()
+
+    def accept(self):
+        self._stop_threads()
+        super().accept()

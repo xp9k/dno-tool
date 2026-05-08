@@ -395,7 +395,8 @@ class SFTPDialog(QDialog):
     def _create_local_panel(self) -> QWidget:
         """Создание левой панели с локальными файлами"""
         left_panel = QVBoxLayout()
-        left_panel.setContentsMargins(0, 0, 0, 0)
+        left_panel.setContentsMargins(4, 2, 4, 2)
+        left_panel.setSpacing(4)
         left_widget = QWidget()
 
         # Устанавливаем политику размера для растягивания
@@ -408,7 +409,6 @@ class SFTPDialog(QDialog):
         self.drive_combo = None
         if platform.system().lower() == 'windows':
             path_toolbar = QHBoxLayout()
-            path_toolbar.setContentsMargins(4, 2, 4, 2)
             path_toolbar.setSpacing(4)
 
             drive_label = QLabel("Диск:")
@@ -463,7 +463,8 @@ class SFTPDialog(QDialog):
     def _create_remote_panel(self) -> QWidget:
         """Создание правой панели с удалёнными файлами"""
         right_panel = QVBoxLayout()
-        right_panel.setContentsMargins(0, 0, 0, 0)
+        right_panel.setContentsMargins(4, 2, 4, 2)
+        right_panel.setSpacing(4)
         right_widget = QWidget()
         
         # Устанавливаем политику размера для растягивания
@@ -472,9 +473,8 @@ class SFTPDialog(QDialog):
             QSizePolicy.Policy.Expanding
         )
         
-        self.remote_path_edit = QTextEdit()
+        self.remote_path_edit = QLineEdit()
         self.remote_path_edit.setReadOnly(True)
-        self.remote_path_edit.setMaximumHeight(30)
         self.remote_path_edit.setText(self.current_remote_path)
         right_panel.addWidget(self.remote_path_edit)
         
