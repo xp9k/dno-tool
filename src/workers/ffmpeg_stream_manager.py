@@ -248,8 +248,15 @@ class FFmpegStreamManager(QObject):
             extra_flags += " -thread_queue_size 512"
             input_format = self._settings.get("input_format", "") or "mjpeg"
             extra_flags += f" -input_format {input_format}"
-        # Для x11grab не указываем -video_size, чтобы захватывался весь экран
-        # Масштабирование до целевого разрешения выполняется через -vf scale
+        elif capture_type == "x11grab":
+            monitor_w = self._settings.get("monitor_width")
+            monitor_h = self._settings.get("monitor_height")
+            monitor_x = self._settings.get("monitor_x_offset")
+            monitor_y = self._settings.get("monitor_y_offset")
+            if monitor_w and monitor_h:
+                extra_flags += f" -video_size {monitor_w}x{monitor_h}"
+            if monitor_x is not None and monitor_y is not None:
+                capture_input = f"{capture_input}+{monitor_x}+{monitor_y}"
 
         # Аудио
         enable_audio = self._settings.get("enable_audio", False)

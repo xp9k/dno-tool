@@ -46,11 +46,30 @@ def build_pipeline(config):
         src.set_property("display-name", display)
         src_caps = el("capsfilter")
         src_caps.set_property("caps", make_caps(f"video/x-raw,framerate={fps}/1"))
+
+        crop_left = config.get("crop_left")
+        crop_top = config.get("crop_top")
+        crop_right = config.get("crop_right")
+        crop_bottom = config.get("crop_bottom")
+
+        has_crop = crop_left is not None
+        if has_crop:
+            videocrop = el("videocrop")
+            videocrop.set_property("left", int(crop_left))
+            videocrop.set_property("top", int(crop_top))
+            videocrop.set_property("right", int(crop_right))
+            videocrop.set_property("bottom", int(crop_bottom))
+            crop_convert = el("videoconvert")
+
         videoscale = el("videoscale")
         scale_caps = el("capsfilter")
         scale_caps.set_property("caps", make_caps(f"video/x-raw,width={width},height={height}"))
         videoconvert = el("videoconvert")
-        pre_encoder = [src, src_caps, videoscale, scale_caps, videoconvert]
+
+        if has_crop:
+            pre_encoder = [src, src_caps, videocrop, crop_convert, videoscale, scale_caps, videoconvert]
+        else:
+            pre_encoder = [src, src_caps, videoscale, scale_caps, videoconvert]
 
     elif capture_type == "v4l2":
         src = el("v4l2src")

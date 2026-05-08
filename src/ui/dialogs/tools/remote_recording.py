@@ -74,6 +74,7 @@ _PROFILES = {
 # ---------------------------------------------------------------------------
 _scan_cache_video: dict[str, tuple[float, list]] = {}
 _scan_cache_audio: dict[str, tuple[float, list]] = {}
+_scan_cache_monitors: dict[str, tuple[float, list]] = {}
 
 
 def _get_cached_scan(host: str, cache: dict) -> Optional[list]:
@@ -142,11 +143,12 @@ class SSHCheckThread(QThread):
 # Поток сканирования видео и аудио
 # ---------------------------------------------------------------------------
 class ScanThread(QThread):
-    result = Signal(list, list, str)
+    result = Signal(list, list, list, str)
 
-    def __init__(self, device: DeviceModel):
+    def __init__(self, device: DeviceModel, scan_monitors: bool = False):
         super().__init__()
         self.device = device
+        self.scan_monitors = scan_monitors
 
     def run(self) -> None:
         try:
@@ -194,10 +196,29 @@ class ScanThread(QThread):
                 audio_output = audio_err
             audio_devices = ScanThread._parse_audio_output(audio_output)
 
+            # --- Мониторы X11 ---
+            monitors = []
+            if self.scan_monitors:
+                try:
+                    mon_cmd = (
+                        'DISPLAY=:0 xrandr --listmonitors 2>/dev/null'
+                    )
+                    stdin3, stdout3, stderr3 = client.exec_command(mon_cmd)
+                    mon_output = stdout3.read().decode("utf-8", errors="ignore").strip()
+                    if not mon_output:
+                        mon_cmd2 = (
+                            'DISPLAY=:0 xrandr --query 2>/dev/null | grep " connected"'
+                        )
+                        stdin3b, stdout3b, _ = client.exec_command(mon_cmd2)
+                        mon_output = stdout3b.read().decode("utf-8", errors="ignore").strip()
+                    monitors = ScanThread._parse_monitor_output(mon_output)
+                except Exception:
+                    monitors = []
+
             client.close()
-            self.result.emit(video_devices, audio_devices, "")
+            self.result.emit(video_devices, audio_devices, monitors, "")
         except Exception as e:
-            self.result.emit([], [], str(e))
+            self.result.emit([], [], [], str(e))
 
     @staticmethod
     def _parse_output(output: str) -> list:
@@ -310,6 +331,129 @@ class ScanThread(QThread):
                     devices.append({"name": hw_name, "description": desc, "driver": "alsa"})
         return devices
 
+    @staticmethod
+    def _parse_monitor_output(output: str) -> list:
+        """Парсит вывод xrandr --listmonitors или xrandr --query | grep connected."""
+        monitors = []
+        if not output:
+            return monitors
+
+        # формат xrandr --listmonitors:
+        # Monitors: 2
+        #  0: +*HDMI-1 1920/527x1080/296+0+0  HDMI-1
+        #  1: +DP-1 1920/527x1080/296+1920+0  DP-1
+        for line in output.splitlines():
+            line = line.strip()
+            m = re.match(r'^(\d+):\s+\+?\*?(\S+)\s+(\d+)/\d+x(\d+)/\d+\+(\d+)\+(\d+)\s+(\S+)', line)
+            if m:
+                idx = int(m.group(1))
+                name = m.group(2)
+                width = m.group(3)
+                height = m.group(4)
+                x_offset = int(m.group(5))
+                y_offset = int(m.group(6))
+                display_name = m.group(7) if m.group(7) != name else name
+                monitors.append({
+                    "index": idx,
+                    "name": name,
+                    "display_name": display_name,
+                    "width": int(width),
+                    "height": int(height),
+                    "x_offset": x_offset,
+                    "y_offset": y_offset,
+                    "x11_input": ":0.0",
+                })
+
+        # Фоллбэк: формат xrandr --query | grep connected:
+        # HDMI-1 connected primary 1920x1080+0+0 (normal left...)
+        # DP-1 connected 1920x1080+1920+0 (normal left...)
+        if not monitors:
+            idx = 0
+            for line in output.splitlines():
+                line = line.strip()
+                m = re.match(r'^(\S+)\s+connected\s+(?:primary\s+)?(\d+)x(\d+)\+(\d+)\+(\d+)', line)
+                if m:
+                    name = m.group(1)
+                    width = int(m.group(2))
+                    height = int(m.group(3))
+                    x_offset = int(m.group(4))
+                    y_offset = int(m.group(5))
+                    monitors.append({
+                        "index": idx,
+                        "name": name,
+                        "display_name": name,
+                        "width": width,
+                        "height": height,
+                        "x_offset": x_offset,
+                        "y_offset": y_offset,
+                        "x11_input": ":0.0",
+                    })
+                    idx += 1
+
+        # Вычислить общий размер виртуального экрана
+        if monitors:
+            screen_w = max(m["x_offset"] + m["width"] for m in monitors)
+            screen_h = max(m["y_offset"] + m["height"] for m in monitors)
+            for m in monitors:
+                m["screen_width"] = screen_w
+                m["screen_height"] = screen_h
+
+        return monitors
+
+        # формат xrandr --listmonitors:
+        # Monitors: 2
+        #  0: +*HDMI-1 1920/527x1080/296+0+0  HDMI-1
+        #  1: +DP-1 1920/527x1080/296+1920+0  DP-1
+        for line in output.splitlines():
+            line = line.strip()
+            m = re.match(r'^(\d+):\s+\+?\*?(\S+)\s+(\d+)/\d+x(\d+)/\d+\+(\d+)\+(\d+)\s+(\S+)', line)
+            if m:
+                idx = int(m.group(1))
+                name = m.group(2)
+                width = m.group(3)
+                height = m.group(4)
+                x_offset = int(m.group(5))
+                y_offset = int(m.group(6))
+                display_name = m.group(7) if m.group(7) != name else name
+                monitors.append({
+                    "index": idx,
+                    "name": name,
+                    "display_name": display_name,
+                    "width": int(width),
+                    "height": int(height),
+                    "x_offset": x_offset,
+                    "y_offset": y_offset,
+                    "x11_input": ":0.0",
+                })
+
+        # Фоллбэк: формат xrandr --query | grep connected:
+        # HDMI-1 connected primary 1920x1080+0+0 (normal left...)
+        # DP-1 connected 1920x1080+1920+0 (normal left...)
+        if not monitors:
+            idx = 0
+            for line in output.splitlines():
+                line = line.strip()
+                m = re.match(r'^(\S+)\s+connected\s+(?:primary\s+)?(\d+)x(\d+)\+(\d+)\+(\d+)', line)
+                if m:
+                    name = m.group(1)
+                    width = int(m.group(2))
+                    height = int(m.group(3))
+                    x_offset = int(m.group(4))
+                    y_offset = int(m.group(5))
+                    monitors.append({
+                        "index": idx,
+                        "name": name,
+                        "display_name": name,
+                        "width": width,
+                        "height": height,
+                        "x_offset": x_offset,
+                        "y_offset": y_offset,
+                        "x11_input": ":0.0",
+                    })
+                    idx += 1
+
+        return monitors
+
 
 # ---------------------------------------------------------------------------
 # Основной диалог
@@ -354,6 +498,7 @@ class RemoteRecordingDialog(QDialog):
         self._ssh_check_thread: Optional[QThread] = None
         self._scan_results: list = []
         self._scan_audio_results: list = []
+        self._scan_monitor_results: list = []
         self._server_state: str = "idle"
         self._is_recording: bool = False
         self._rec_filepath: str = ""
@@ -403,7 +548,7 @@ class RemoteRecordingDialog(QDialog):
         self.capture_type_combo.currentIndexChanged.connect(self._on_capture_type_changed)
 
         self.capture_input_combo = QComboBox()
-        self.capture_input_combo.setEditable(True)
+        self.capture_input_combo.setEditable(False)
         self.capture_input_combo.setPlaceholderText(":0.0")
         self.capture_input_combo.currentTextChanged.connect(self._update_connection_url)
         self.capture_input_combo.currentIndexChanged.connect(self._on_device_selected)
@@ -811,7 +956,6 @@ class RemoteRecordingDialog(QDialog):
         }
         self.capture_input_combo.setPlaceholderText(placeholders.get(capture_type, ""))
         self.capture_input_combo.blockSignals(True)
-        self.capture_input_combo.clearEditText()
         self.capture_input_combo.clear()
         self.capture_input_combo.blockSignals(False)
 
@@ -833,6 +977,11 @@ class RemoteRecordingDialog(QDialog):
                 if self.capture_input_combo.count() > 0:
                     self.capture_input_combo.setCurrentIndex(0)
                     self._on_device_selected(0)
+        elif capture_type == "x11grab":
+            mon_cached = _get_cached_scan(self.device.host, _scan_cache_monitors)
+            if mon_cached is not None:
+                self._scan_monitor_results = mon_cached
+                self._populate_monitor_combo(mon_cached)
         
         # Аудио кэш
         audio_cached = _get_cached_scan(self.device.host, _scan_cache_audio)
@@ -871,27 +1020,59 @@ class RemoteRecordingDialog(QDialog):
         self._populate_audio_combo(driver)
 
     # -------------------------------------------------------------------
+    # Заполнение combo мониторов
+    # -------------------------------------------------------------------
+    def _populate_monitor_combo(self, monitors: list) -> None:
+        """Заполнить combo источника для x11grab из списка мониторов."""
+        self.capture_input_combo.blockSignals(True)
+        self.capture_input_combo.clear()
+        if monitors:
+            total_w = sum(m["width"] for m in monitors)
+            max_h = max(m["height"] + m["y_offset"] for m in monitors)
+            self.capture_input_combo.addItem(
+                f"Все мониторы ({total_w}x{max_h})", "all"
+            )
+            for mon in monitors:
+                label = f"{mon['name']} ({mon['width']}x{mon['height']}+{mon['x_offset']}+{mon['y_offset']})"
+                self.capture_input_combo.addItem(label, f"mon_{mon['index']}")
+            if self.capture_input_combo.count() > 0:
+                self.capture_input_combo.setCurrentIndex(0)
+        else:
+            self.capture_input_combo.setPlaceholderText(":0.0")
+        self.capture_input_combo.blockSignals(False)
+
+    # -------------------------------------------------------------------
     # Сканирование
     # -------------------------------------------------------------------
     def _scan_devices(self) -> None:
+        scan_monitors = self.capture_type_combo.currentData() == "x11grab"
         vid_cached = _get_cached_scan(self.device.host, _scan_cache_video)
         aud_cached = _get_cached_scan(self.device.host, _scan_cache_audio)
-        if vid_cached is not None and aud_cached is not None:
-            self._on_scan_result(vid_cached, aud_cached, "")
+        mon_cached = _get_cached_scan(self.device.host, _scan_cache_monitors)
+
+        # Если все нужные кэши есть — используем их
+        need_monitors = scan_monitors and mon_cached is None
+        if vid_cached is not None and aud_cached is not None and not need_monitors:
+            cached_monitors = mon_cached if mon_cached is not None else []
+            self._on_scan_result(vid_cached, aud_cached, cached_monitors, "")
             return
 
         if self.capture_type_combo.currentData() == "v4l2":
             self.capture_input_combo.blockSignals(True)
             self.capture_input_combo.clear()
             self.capture_input_combo.blockSignals(False)
+        elif self.capture_type_combo.currentData() == "x11grab":
+            self.capture_input_combo.blockSignals(True)
+            self.capture_input_combo.clear()
+            self.capture_input_combo.blockSignals(False)
         self.scan_btn.setEnabled(False)
 
-        self._scan_thread = ScanThread(self.device)
+        self._scan_thread = ScanThread(self.device, scan_monitors=scan_monitors)
         self._scan_thread.result.connect(self._on_scan_result)
         self._scan_thread.finished.connect(self._scan_thread.deleteLater)
         self._scan_thread.start()
 
-    def _on_scan_result(self, video_devices: list, audio_devices: list, error: str) -> None:
+    def _on_scan_result(self, video_devices: list, audio_devices: list, monitor_devices: list, error: str) -> None:
         self.scan_btn.setEnabled(True)
         if error:
             return
@@ -899,8 +1080,12 @@ class RemoteRecordingDialog(QDialog):
         _set_cached_scan(self.device.host, video_devices, _scan_cache_video)
         _set_cached_scan(self.device.host, audio_devices, _scan_cache_audio)
 
+        if monitor_devices:
+            _set_cached_scan(self.device.host, monitor_devices, _scan_cache_monitors)
+
         self._scan_results = video_devices
         self._scan_audio_results = audio_devices
+        self._scan_monitor_results = monitor_devices
 
         # --- Видео: заполняем combo только для v4l2 ---
         capture_type = self.capture_type_combo.currentData()
@@ -924,6 +1109,8 @@ class RemoteRecordingDialog(QDialog):
             self.capture_input_combo.blockSignals(False)
             if video_devices:
                 self._on_device_selected(0)
+        elif capture_type == "x11grab":
+            self._populate_monitor_combo(monitor_devices)
         self._update_connection_url()
 
         # --- Аудио ---
@@ -938,6 +1125,32 @@ class RemoteRecordingDialog(QDialog):
             return
         device_path = self.capture_input_combo.itemData(index)
         if not device_path:
+            return
+
+        capture_type = self.capture_type_combo.currentData()
+
+        # Для x11grab проверяем мониторы
+        if capture_type == "x11grab":
+            if device_path == "all":
+                # Все мониторы — без обрезки
+                self._reset_resolution_defaults()
+                self._update_connection_url()
+                return
+            for mon in self._scan_monitor_results:
+                if f"mon_{mon['index']}" == device_path:
+                    native_res = f"{mon['width']}x{mon['height']}"
+                    self.resolution_combo.blockSignals(True)
+                    self.resolution_combo.clear()
+                    self.resolution_combo.addItem(native_res, native_res)
+                    for res in ("1920x1080", "1280x720", "1024x768", "800x600"):
+                        if res != native_res:
+                            self.resolution_combo.addItem(res, res)
+                    self.resolution_combo.setCurrentIndex(0)
+                    self.resolution_combo.blockSignals(False)
+                    self._on_resolution_changed(0)
+                    self._update_connection_url()
+                    return
+            self._update_connection_url()
             return
 
         device_data = None
@@ -1031,11 +1244,12 @@ class RemoteRecordingDialog(QDialog):
     # -------------------------------------------------------------------
     def _get_capture_input(self) -> str:
         data = self.capture_input_combo.currentData()
-        if data:
+        if data == "all":
+            return ":0.0"
+        if data and data.startswith("mon_"):
+            return ":0.0"
+        if data and not data.startswith("mon_"):
             return data
-        text = self.capture_input_combo.currentText().strip()
-        if text:
-            return text
         capture_type = self.capture_type_combo.currentData()
         defaults = {
             "x11grab": ":0.0",
@@ -1266,6 +1480,26 @@ class RemoteRecordingDialog(QDialog):
             "audio_codec": self.audio_codec_combo.currentData() or "aac",
             "audio_bitrate": self.audio_bitrate_edit.text() or "128k",
         }
+
+        # Для x11grab: добавляем параметры монитора для обрезки
+        if capture_type == "x11grab":
+            selected_data = self.capture_input_combo.currentData()
+            if selected_data != "all":
+                for mon in self._scan_monitor_results:
+                    if f"mon_{mon['index']}" == selected_data:
+                        settings["monitor_x_offset"] = mon["x_offset"]
+                        settings["monitor_y_offset"] = mon["y_offset"]
+                        settings["monitor_width"] = mon["width"]
+                        settings["monitor_height"] = mon["height"]
+                        screen_w = mon.get("screen_width", mon["x_offset"] + mon["width"])
+                        screen_h = mon.get("screen_height", mon["y_offset"] + mon["height"])
+                        settings["screen_width"] = screen_w
+                        settings["screen_height"] = screen_h
+                        settings["crop_left"] = mon["x_offset"]
+                        settings["crop_top"] = mon["y_offset"]
+                        settings["crop_right"] = screen_w - mon["x_offset"] - mon["width"]
+                        settings["crop_bottom"] = screen_h - mon["y_offset"] - mon["height"]
+                        break
 
         # Валидация аудио
         if settings["enable_audio"]:
@@ -1636,6 +1870,22 @@ class RemoteRecordingDialog(QDialog):
             sw, sh_h = resolution.split("x")
             vf_parts.append(f"scale={sw}:{sh_h}")
 
+        # Для x11grab добавляем смещение и размер монитора
+        x11_monitor_x = None
+        x11_monitor_y = None
+        x11_monitor_w = None
+        x11_monitor_h = None
+        if capture_type == "x11grab":
+            selected_data = self.capture_input_combo.currentData()
+            if selected_data != "all":
+                for mon in self._scan_monitor_results:
+                    if f"mon_{mon['index']}" == selected_data:
+                        x11_monitor_x = mon["x_offset"]
+                        x11_monitor_y = mon["y_offset"]
+                        x11_monitor_w = mon["width"]
+                        x11_monitor_h = mon["height"]
+                        break
+
         audio_source = self.audio_source_combo.currentData() or "pulse"
         audio_input = self.audio_device_combo.currentData() or self.audio_device_combo.currentText() or "default"
         audio_codec = self.audio_codec_combo.currentData() or "aac"
@@ -1662,8 +1912,14 @@ class RemoteRecordingDialog(QDialog):
                            "-video_size", resolution, "-framerate", str(fps),
                            "-i", capture_input]
         elif capture_type == "x11grab":
-            ffmpeg_args += ["-f", "x11grab", "-framerate", str(fps),
-                           "-i", capture_input or ":0.0"]
+            x11_input = capture_input or ":0.0"
+            if x11_monitor_w and x11_monitor_h:
+                ffmpeg_args += ["-f", "x11grab", "-framerate", str(fps),
+                               "-video_size", f"{x11_monitor_w}x{x11_monitor_h}",
+                               "-i", f"{x11_input}+{x11_monitor_x}+{x11_monitor_y}" if x11_monitor_x is not None else x11_input]
+            else:
+                ffmpeg_args += ["-f", "x11grab", "-framerate", str(fps),
+                               "-i", x11_input]
         else:
             ffmpeg_args += ["-f", capture_type, "-i", capture_input]
 

@@ -49,6 +49,7 @@ _GST_ELEMENT_PACKAGES = {
     "opusenc": "gstreamer1.0-plugins-base",
     "pulsesrc": "gstreamer1.0-pulse",
     "alsasrc": "gstreamer1.0-plugins-base",
+    "videocrop": "gstreamer1.0-plugins-good",
     "mpegtsmux": "gstreamer1.0-plugins-bad",
     "tcpserversink": "gstreamer1.0-plugins-base",
     "rtph264pay": "gstreamer1.0-plugins-good",
@@ -345,6 +346,8 @@ class GStreamerStreamManager(QObject):
 
         if capture_type == "x11grab":
             elements += ["ximagesrc", "videoscale", "videoconvert"]
+            if self._settings.get("crop_left") is not None:
+                elements.append("videocrop")
         elif capture_type == "v4l2":
             elements.append("v4l2src")
             if input_format == "mjpeg":
@@ -514,6 +517,31 @@ class GStreamerStreamManager(QObject):
             "bitrate_kbps": bitrate_kbps,
         }
 
+        monitor_x = self._settings.get("monitor_x_offset")
+        monitor_y = self._settings.get("monitor_y_offset")
+        monitor_w = self._settings.get("monitor_width")
+        monitor_h = self._settings.get("monitor_height")
+        crop_left = self._settings.get("crop_left")
+        crop_top = self._settings.get("crop_top")
+        crop_right = self._settings.get("crop_right")
+        crop_bottom = self._settings.get("crop_bottom")
+        if monitor_x is not None:
+            config["monitor_x_offset"] = monitor_x
+        if monitor_y is not None:
+            config["monitor_y_offset"] = monitor_y
+        if monitor_w is not None:
+            config["monitor_width"] = monitor_w
+        if monitor_h is not None:
+            config["monitor_height"] = monitor_h
+        if crop_left is not None:
+            config["crop_left"] = crop_left
+        if crop_top is not None:
+            config["crop_top"] = crop_top
+        if crop_right is not None:
+            config["crop_right"] = crop_right
+        if crop_bottom is not None:
+            config["crop_bottom"] = crop_bottom
+
         enable_audio = self._settings.get("enable_audio", False)
         if enable_audio:
             audio_source = self._settings.get("audio_source", "pulse") or "pulse"
@@ -563,9 +591,22 @@ class GStreamerStreamManager(QObject):
         if capture_type == "x11grab":
             display = capture_input.split(".")[0] if capture_input else ":0"
             pipeline_parts.append(f"ximagesrc display-name={display} use-damage=false")
-            pipeline_parts.append(f"video/x-raw,framerate={fps}/1")
+            crop_left = self._settings.get("crop_left")
+            crop_top = self._settings.get("crop_top")
+            crop_right = self._settings.get("crop_right")
+            crop_bottom = self._settings.get("crop_bottom")
+            if crop_left is not None:
+                pipeline_parts.append(f"video/x-raw,framerate={fps}/1")
+                pipeline_parts.append(
+                    f"videocrop left={int(crop_left)} top={int(crop_top)}"
+                    f" right={int(crop_right)} bottom={int(crop_bottom)}"
+                )
+                pipeline_parts.append("videoconvert")
+            else:
+                pipeline_parts.append(f"video/x-raw,framerate={fps}/1")
             pipeline_parts.append("videoscale")
             pipeline_parts.append(f"video/x-raw,width={sw},height={sh}")
+            pipeline_parts.append("videoconvert")
         elif capture_type == "v4l2":
             input_format = self._settings.get("input_format", "") or "mjpeg"
             pipeline_parts.append(f"v4l2src device={capture_input}")
