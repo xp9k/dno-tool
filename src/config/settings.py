@@ -146,19 +146,10 @@ class NetworkConfig:
 
 
 @dataclass
-class MediaConfig:
-    ffmpeg_path: str = "ffmpeg"
-    ffplay_path: str = "ffplay"
-    vlc_path: str = "vlc"
-    recording_path: str = ""
-
-
-@dataclass
 class AppConfig:
     ssh: SSHConfig = field(default_factory=SSHConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
-    media: MediaConfig = field(default_factory=MediaConfig)
-    expand: bool = False 
+    expand: bool = False
 
 class Config:
     def __init__(self):
@@ -199,11 +190,6 @@ class Config:
                                 logger.error(f"Error loading ports from config: {e}")
                     if 'expand' in data:
                         self.app.expand = bool(data['expand'])
-                    if 'media' in data:
-                        try:
-                            self.app.media = MediaConfig(**data['media'])
-                        except Exception as e:
-                            logger.error(f"Error loading media config: {e}")
         except Exception as e:
             logger.error(f"Error loading config: {e}")
             print(f"Error loading config: {e}")
@@ -215,7 +201,6 @@ class Config:
                 'ssh': asdict(self.app.ssh),
                 'network': asdict(self.app.network),
                 'expand': self.app.expand,
-                'media': asdict(self.app.media),
             }
             # Save ports under network -> ports (keys as strings for JSON)
             try:

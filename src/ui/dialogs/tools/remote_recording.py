@@ -33,13 +33,12 @@ from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QLineEdit, QPushButton, QComboBox, QSpinBox,
     QTextEdit, QTabWidget, QGroupBox,
-    QFileDialog, QMessageBox, QApplication, QCheckBox, QSizePolicy, QLayout,
+    QFileDialog, QMessageBox, QApplication, QSizePolicy,
 )
 
 from src.domain.models import DeviceModel
-from src.config import config
-from src.logger import logger
 from src.workers.ffmpeg_stream_manager import FFmpegStreamManager
+from src.workers.gstreamer_stream_manager import GStreamerStreamManager
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +335,20 @@ class RemoteRecordingDialog(QDialog):
         self._stream_manager.output.connect(self._on_output)
         self._stream_manager.error.connect(self._on_error)
 
+        self._gst_manager = GStreamerStreamManager(self)
+        self._gst_manager.started.connect(self._on_gst_started)
+        self._gst_manager.stopped.connect(self._on_gst_stopped)
+        self._gst_manager.output.connect(self._on_gst_output)
+        self._gst_manager.error.connect(self._on_gst_error)
+        self._gst_manager.gst_install_finished.connect(self._on_gst_install_finished)
+
+        self._active_engine: str = "ffmpeg"
+        self._session_settings: dict = {
+            "ffplay_path": "ffplay",
+            "vlc_path": "vlc",
+            "recording_path": "/tmp/recordings",
+        }
+
         self._player_processes: list[QProcess] = []
         self._scan_thread: Optional[QThread] = None
         self._ssh_check_thread: Optional[QThread] = None
@@ -504,21 +517,52 @@ class RemoteRecordingDialog(QDialog):
         stream_layout = QVBoxLayout(stream_tab)
         stream_layout.setSpacing(6)
 
+        # --- Движок сервера ---
+        self.engine_combo = QComboBox()
+        self.engine_combo.addItem("GStreamer (RTSP)", "gstreamer")
+        self.engine_combo.addItem("FFmpeg", "ffmpeg")
+        self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+
+        self.gst_install_btn = QPushButton("📦 Установить")
+        self.gst_install_btn.setToolTip("Установить GStreamer на удалённый хост через dnf")
+        self.gst_install_btn.clicked.connect(self._install_gstreamer)
+
+        self.gst_status_label = QLabel("")
+
         self.transport_combo = QComboBox()
         self.transport_combo.addItem("TCP (listen)", "tcp")
         self.transport_combo.addItem("HTTP (listen)", "http")
-        self.transport_combo.currentIndexChanged.connect(self._update_connection_url)
+        self.transport_combo.currentIndexChanged.connect(self._on_transport_changed)
 
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1024, 65535)
         self.port_spin.setValue(8080)
         self.port_spin.valueChanged.connect(self._update_connection_url)
 
-        stream_form = QFormLayout()
-        stream_form.setSpacing(4)
-        stream_form.addRow("Протокол:", self.transport_combo)
-        stream_form.addRow("Порт:", self.port_spin)
-        stream_layout.addLayout(stream_form)
+        engine_row = QHBoxLayout()
+        engine_row.setSpacing(4)
+        engine_row.addWidget(self.engine_combo, 1)
+        engine_row.addWidget(self.gst_install_btn)
+        engine_row.addWidget(self.gst_status_label)
+
+        proto_row = QHBoxLayout()
+        proto_row.setSpacing(6)
+        lbl_proto = QLabel("Протокол:")
+        lbl_proto.setBuddy(self.transport_combo)
+        proto_row.addWidget(lbl_proto)
+        proto_row.addWidget(self.transport_combo, 1)
+        lbl_port = QLabel("Порт:")
+        lbl_port.setBuddy(self.port_spin)
+        proto_row.addWidget(lbl_port)
+        proto_row.addWidget(self.port_spin, 1)
+
+        proto_form = QFormLayout()
+        proto_form.setSpacing(6)
+        proto_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        proto_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        proto_form.addRow("Движок:", engine_row)
+        proto_form.addRow(proto_row)
+        stream_layout.addLayout(proto_form)
 
         # --- URL потока ---
         url_group = QGroupBox("URL потока")
@@ -544,12 +588,10 @@ class RemoteRecordingDialog(QDialog):
         paths_form = QFormLayout(paths_group)
         paths_form.setSpacing(4)
 
-        self.ffmpeg_path_edit = QLineEdit()
         self.ffplay_path_edit = QLineEdit()
         self.vlc_path_edit = QLineEdit()
 
         for edit, name in [
-            (self.ffmpeg_path_edit, "ffmpeg"),
             (self.ffplay_path_edit, "ffplay"),
             (self.vlc_path_edit, "vlc"),
         ]:
@@ -602,15 +644,10 @@ class RemoteRecordingDialog(QDialog):
         rec_settings_layout = QVBoxLayout(rec_settings_group)
         rec_settings_layout.setSpacing(4)
 
-        self.rec_tabs = QTabWidget()
-
-        # -- Таб: Пути --
-        rec_paths_tab = QWidget()
-        rec_paths_form = QFormLayout(rec_paths_tab)
-        rec_paths_form.setSpacing(4)
-
         self.rec_path_edit = QLineEdit()
         self.rec_path_edit.setPlaceholderText("/home/user/recordings")
+        rec_paths_form = QFormLayout()
+        rec_paths_form.setSpacing(4)
         rec_paths_form.addRow("Путь на сервере:", self.rec_path_edit)
 
         self.rec_format_combo = QComboBox()
@@ -624,9 +661,7 @@ class RemoteRecordingDialog(QDialog):
         self.rec_filename_edit.editingFinished.connect(self._on_filename_edited)
         rec_paths_form.addRow("Файл записи:", self.rec_filename_edit)
 
-        self.rec_tabs.addTab(rec_paths_tab, "Пути")
-
-        rec_settings_layout.addWidget(self.rec_tabs)
+        rec_settings_layout.addLayout(rec_paths_form)
         rec_layout.addWidget(rec_settings_group)
 
         # --- Статус + Информация о записи ---
@@ -690,26 +725,21 @@ class RemoteRecordingDialog(QDialog):
         self.rec_format_combo.currentIndexChanged.connect(self._update_rec_filename)
         self._update_rec_filename()
 
+        # Начальное состояние движка
+        self._on_engine_changed(0)
+
     # -------------------------------------------------------------------
     # Настройки
     # -------------------------------------------------------------------
     def _load_settings(self) -> None:
-        """Загрузить настройки из конфига и сбросить состояние диалога."""
-        media = config.app.media
+        self.ffplay_path_edit.setText(self._session_settings.get("ffplay_path", "ffplay"))
+        self.vlc_path_edit.setText(self._session_settings.get("vlc_path", "vlc"))
 
-        self.ffmpeg_path_edit.setText(media.ffmpeg_path)
-        self.ffplay_path_edit.setText(media.ffplay_path)
-        self.vlc_path_edit.setText(media.vlc_path)
-
-        recording_path = getattr(media, 'recording_path', '') or ''
-        if not recording_path:
-            recording_path = "/tmp/recordings"
+        recording_path = self._session_settings.get("recording_path", "/tmp/recordings") or "/tmp/recordings"
         self.rec_path_edit.setText(recording_path)
         self._update_rec_filename()
 
-        # Auto-detect fallback
         for edit, fallback in [
-            (self.ffmpeg_path_edit, "ffmpeg"),
             (self.ffplay_path_edit, "ffplay"),
             (self.vlc_path_edit, "vlc"),
         ]:
@@ -719,7 +749,6 @@ class RemoteRecordingDialog(QDialog):
                     edit.setText(found)
 
         self._validate_all_binaries()
-
         self._reset_device_combos()
 
     def _reset_device_combos(self) -> None:
@@ -734,17 +763,9 @@ class RemoteRecordingDialog(QDialog):
         self.audio_device_combo.blockSignals(False)
 
     def _save_settings(self) -> None:
-        """Сохранить пути в конфиг."""
-        media = config.app.media
-        media.ffmpeg_path = self.ffmpeg_path_edit.text() or "ffmpeg"
-        media.ffplay_path = self.ffplay_path_edit.text() or "ffplay"
-        media.vlc_path = self.vlc_path_edit.text() or "vlc"
-        media.recording_path = self.rec_path_edit.text()
-
-        try:
-            config.save()
-        except Exception as e:
-            logger.error(f"RemoteRecordingDialog: Error saving config: {e}")
+        self._session_settings["ffplay_path"] = self.ffplay_path_edit.text() or "ffplay"
+        self._session_settings["vlc_path"] = self.vlc_path_edit.text() or "vlc"
+        self._session_settings["recording_path"] = self.rec_path_edit.text()
 
     # -------------------------------------------------------------------
     # Валидация бинарников
@@ -758,7 +779,6 @@ class RemoteRecordingDialog(QDialog):
         return ok
 
     def _validate_all_binaries(self) -> None:
-        self._validate_binary_field(self.ffmpeg_path_edit, "ffmpeg")
         self._validate_binary_field(self.ffplay_path_edit, "ffplay")
         self._validate_binary_field(self.vlc_path_edit, "vlc")
 
@@ -1031,11 +1051,100 @@ class RemoteRecordingDialog(QDialog):
             return f"tcp://{host}:{port}"
         elif transport == "http":
             return f"http://{host}:{port}/stream.ts"
+        elif transport == "rtsp":
+            return f"rtsp://{host}:{port}/stream"
         return f"tcp://{host}:{port}"
 
     def _update_connection_url(self) -> None:
         url = self._get_stream_url()
         self.url_edit.setPlaceholderText(f"URL: {url}")
+
+    # -------------------------------------------------------------------
+    # Выбор движка (FFmpeg / GStreamer)
+    # -------------------------------------------------------------------
+    def _on_engine_changed(self, index: int) -> None:
+        engine = self.engine_combo.currentData() if index >= 0 else "gstreamer"
+        self._active_engine = engine
+        is_gst = engine == "gstreamer"
+
+        self.gst_install_btn.setVisible(is_gst)
+        self.gst_status_label.setVisible(is_gst)
+
+        # Управляем доступностью протоколов
+        self.transport_combo.blockSignals(True)
+        current_transport = self.transport_combo.currentData()
+
+        if not is_gst:
+            # FFmpeg: TCP, HTTP
+            self.transport_combo.clear()
+            self.transport_combo.addItem("TCP (listen)", "tcp")
+            self.transport_combo.addItem("HTTP (listen)", "http")
+            self.port_spin.setValue(8080)
+        else:
+            # GStreamer: только RTSP
+            self.transport_combo.clear()
+            self.transport_combo.addItem("RTSP", "rtsp")
+            self.port_spin.setValue(8554)
+
+        self.transport_combo.blockSignals(False)
+        self._update_connection_url()
+        self._update_buttons()
+
+    def _on_transport_changed(self, index: int) -> None:
+        transport = self.transport_combo.currentData()
+        if transport == "rtsp":
+            self.port_spin.setValue(8554)
+        elif self.port_spin.value() == 8554:
+            self.port_spin.setValue(8080)
+        self._update_connection_url()
+
+    # -------------------------------------------------------------------
+    # Проверка и установка GStreamer
+    # -------------------------------------------------------------------
+    def _install_gstreamer(self) -> None:
+        self.gst_install_btn.setEnabled(False)
+        self.gst_status_label.setText("Установка GStreamer...")
+        self._gst_manager.install_gstreamer(self.device)
+
+    def _on_gst_install_finished(self, device_iid: str, success: bool, message: str) -> None:
+        self.gst_install_btn.setEnabled(True)
+        if success:
+            self.gst_status_label.setStyleSheet("color: green;")
+            self.gst_status_label.setText(f"✅ {message}")
+        else:
+            self.gst_status_label.setStyleSheet("color: red;")
+            self.gst_status_label.setText(f"❌ {message}")
+
+    # GStreamer signal handlers
+    def _on_gst_started(self, device_iid: str) -> None:
+        self._server_state = "streaming"
+        self._update_buttons()
+        self._update_status_label(True)
+        self._append_log("[INFO] GStreamer RTSP-сервер запущен", "info")
+
+    def _on_gst_stopped(self, device_iid: str) -> None:
+        self._server_state = "stopped"
+        self._update_buttons()
+        self.url_edit.clear()
+        self._update_status_label(False)
+        self._append_log("[INFO] GStreamer RTSP-сервер остановлен", "info")
+
+    def _on_gst_output(self, device_iid: str, line: str) -> None:
+        kind = None
+        if line.startswith("[STDERR]"):
+            lower = line.lower()
+            if any(kw in lower for kw in ("error", "failed", "cannot", "denied", "not found")):
+                kind = "error"
+            elif "warning" in lower:
+                kind = "warning"
+        self._append_log(line, kind)
+
+    def _on_gst_error(self, device_iid: str, message: str) -> None:
+        if self._server_state != "stopped":
+            self._server_state = "error"
+            self.status_label.setText(f"🔴 {message}")
+        self._update_buttons()
+        self._append_log(f"[ERROR] {message}", "error")
 
     def _copy_url_to_clipboard(self) -> None:
         url = self.url_edit.text()
@@ -1101,6 +1210,18 @@ class RemoteRecordingDialog(QDialog):
 
         capture_type = self.capture_type_combo.currentData()
         capture_input = self._get_capture_input()
+        engine = self.engine_combo.currentData()
+        transport = self.transport_combo.currentData()
+
+        # RTSP работает только с GStreamer
+        if transport == "rtsp" and engine != "gstreamer":
+            QMessageBox.warning(
+                self,
+                "Несовместимый протокол",
+                "RTSP-стрим доступен только при выборе движка GStreamer.\n"
+                "Переключите движок на «GStreamer (RTSP)» или выберите другой протокол."
+            )
+            return
 
         if capture_type == "v4l2":
             has_explicit = (
@@ -1130,11 +1251,10 @@ class RemoteRecordingDialog(QDialog):
         fps = self.fps_combo.currentData() or 25
 
         settings = {
-            "ffmpeg_path": self.ffmpeg_path_edit.text() or "ffmpeg",
             "capture_type": capture_type,
             "capture_input": capture_input,
             "input_format": self.input_format_combo.currentData(),
-            "transport": self.transport_combo.currentData(),
+            "transport": transport,
             "codec": self.codec_combo.currentData(),
             "resolution": resolution,
             "bitrate": self.bitrate_edit.text() or "2M",
@@ -1172,19 +1292,34 @@ class RemoteRecordingDialog(QDialog):
         self._log_lines.clear()
         self.url_edit.clear()
 
-        success = self._stream_manager.start(self.device, settings)
-        if success:
-            self.url_edit.setText(self._get_stream_url())
-            self._update_buttons()
-            self._update_status_label(True)
+        if engine == "gstreamer":
+            success = self._gst_manager.start(self.device, settings)
+            if success:
+                self.url_edit.setText(self._get_stream_url())
+                self._update_buttons()
+                self._update_status_label(True)
+            else:
+                QMessageBox.warning(
+                    self, "Ошибка", "Не удалось запустить GStreamer RTSP-сервер на удалённом устройстве"
+                )
+                self._update_status_label(False)
         else:
-            QMessageBox.warning(
-                self, "Ошибка", "Не удалось запустить FFmpeg на удалённом устройстве"
-            )
-            self._update_status_label(False)
+            success = self._stream_manager.start(self.device, settings)
+            if success:
+                self.url_edit.setText(self._get_stream_url())
+                self._update_buttons()
+                self._update_status_label(True)
+            else:
+                QMessageBox.warning(
+                    self, "Ошибка", "Не удалось запустить FFmpeg на удалённом устройстве"
+                )
+                self._update_status_label(False)
 
     def _stop_server(self) -> None:
-        self._stream_manager.stop()
+        if self._active_engine == "gstreamer":
+            self._gst_manager.stop()
+        else:
+            self._stream_manager.stop()
         self.url_edit.clear()
         self._update_buttons()
         self._update_status_label(False)
@@ -1194,12 +1329,17 @@ class RemoteRecordingDialog(QDialog):
     # -------------------------------------------------------------------
     def _open_in_player(self, player: str) -> None:
         url = self._get_stream_url()
+        transport = self.transport_combo.currentData()
         if player == "ffplay":
             path = self.ffplay_path_edit.text() or "ffplay"
             args = [url]
+            if transport == "rtsp":
+                args = ["-rtsp_transport", "tcp", url]
         else:
             path = self.vlc_path_edit.text() or "vlc"
             args = [url]
+            if transport == "rtsp":
+                args = ["--rtsp-tcp", url]
 
         process = QProcess(self)
         process.finished.connect(process.deleteLater)
@@ -1275,7 +1415,9 @@ class RemoteRecordingDialog(QDialog):
     # Статус / Кнопки
     # -------------------------------------------------------------------
     def _update_buttons(self) -> None:
-        running = self._stream_manager.is_running
+        gst_running = self._gst_manager.is_running
+        ffmpeg_running = self._stream_manager.is_running
+        running = ffmpeg_running or gst_running
         recording = self._is_recording
         self.start_btn.setEnabled(not running and not recording)
         self.stop_btn.setEnabled(running)
@@ -1287,13 +1429,14 @@ class RemoteRecordingDialog(QDialog):
     def _update_status_label(self, running: bool) -> None:
         if running:
             self._server_state = "streaming"
-            self.status_label.setText("🟢 Стрим активен")
+            engine_name = "GStreamer RTSP" if self._active_engine == "gstreamer" else "FFmpeg"
+            self.status_label.setText(f"🟢 {engine_name} стрим активен")
         elif self._is_recording:
             self._server_state = "recording"
             self.status_label.setText("🟡 Запись активна")
         else:
             self._server_state = "stopped"
-            self.status_label.setText("🔴 Остановлен")
+            self.status_label.setText("🔴 Сервер остановлен")
 
     # -------------------------------------------------------------------
     # События
@@ -1304,11 +1447,13 @@ class RemoteRecordingDialog(QDialog):
         super().showEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._stream_manager.is_running:
+        any_running = self._stream_manager.is_running or self._gst_manager.is_running
+        if any_running:
+            engine_name = "GStreamer RTSP" if self._gst_manager.is_running else "FFmpeg"
             reply = QMessageBox.question(
                 self,
                 "Подтверждение",
-                "FFmpeg-сервер запущен. Закрыть диалог и остановить стрим?",
+                f"{engine_name}-сервер запущен. Закрыть диалог и остановить стрим?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -1318,6 +1463,7 @@ class RemoteRecordingDialog(QDialog):
             self._stop_recording()
         self._save_settings()
         self._stream_manager.stop()
+        self._gst_manager.stop()
         self._kill_player_processes()
         self._cancel_scan_thread()
         self._rec_info_timer.stop()
@@ -1396,7 +1542,7 @@ class RemoteRecordingDialog(QDialog):
         if self._is_recording:
             return
 
-        if self._stream_manager.is_running:
+        if self._stream_manager.is_running or self._gst_manager.is_running:
             QMessageBox.warning(
                 self,
                 "Стрим активен",
@@ -1423,7 +1569,7 @@ class RemoteRecordingDialog(QDialog):
         self.rec_size_label.setText("—")
         self.rec_duration_label.setText("0:00")
         self._update_buttons()
-        self._update_status_label(self._stream_manager.is_running)
+        self._update_status_label(self._stream_manager.is_running or self._gst_manager.is_running)
 
         self._rec_log_lines.clear()
         self._append_rec_log(f"[INFO] Запуск записи на сервере: {filepath}")
@@ -1450,7 +1596,7 @@ class RemoteRecordingDialog(QDialog):
         except Exception:
             pass
 
-        ffmpeg = self.ffmpeg_path_edit.text() or "ffmpeg"
+        ffmpeg = "ffmpeg"
         capture_type = self.capture_type_combo.currentData()
         capture_input = self._get_capture_input()
         resolution = self.resolution_combo.currentData() or "1280x720"
@@ -1485,22 +1631,15 @@ class RemoteRecordingDialog(QDialog):
             if xauth_val:
                 env_prefix += f"XAUTHORITY={shlex.quote(xauth_val)} "
 
-        audio_input_args = ""
-        audio_output_args = ""
-        if self._audio_group.isChecked():
-            audio_source = self.audio_source_combo.currentData() or "pulse"
-            audio_input = self.audio_device_combo.currentData() or self.audio_device_combo.currentText() or "default"
-            audio_codec = self.audio_codec_combo.currentData() or "aac"
-            audio_bitrate = self.audio_bitrate_edit.text() or "128k"
-            audio_input_args = f' -f {audio_source} -ac 2 -ar 48000 -i {shlex.quote(audio_input)}'
-            audio_output_args = f' -c:a {audio_codec} -b:a {audio_bitrate}'
-        else:
-            audio_output_args = ' -an'
-
         vf_parts = []
         if resolution:
             sw, sh_h = resolution.split("x")
             vf_parts.append(f"scale={sw}:{sh_h}")
+
+        audio_source = self.audio_source_combo.currentData() or "pulse"
+        audio_input = self.audio_device_combo.currentData() or self.audio_device_combo.currentText() or "default"
+        audio_codec = self.audio_codec_combo.currentData() or "aac"
+        audio_bitrate = self.audio_bitrate_edit.text() or "128k"
 
         if codec in ("libx264", "libx265"):
             codec_list = ["-c:v", codec, "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p"]
@@ -1618,7 +1757,7 @@ class RemoteRecordingDialog(QDialog):
 
         self.rec_status_label.setText("⏹ Запись остановлена")
         self._update_buttons()
-        self._update_status_label(self._stream_manager.is_running)
+        self._update_status_label(self._stream_manager.is_running or self._gst_manager.is_running)
 
     def _on_rec_output(self) -> None:
         pass
@@ -1668,7 +1807,7 @@ class RemoteRecordingDialog(QDialog):
                 self._rec_info_timer.stop()
                 self.rec_status_label.setText("🔴 Запись упала (процесс завершён)")
                 self._update_buttons()
-                self._update_status_label(self._stream_manager.is_running)
+                self._update_status_label(self._stream_manager.is_running or self._gst_manager.is_running)
                 client.close()
                 return
             elif pid_status == "dead":
@@ -1677,7 +1816,7 @@ class RemoteRecordingDialog(QDialog):
                 self._rec_info_timer.stop()
                 self.rec_status_label.setText("🔴 Запись упала")
                 self._update_buttons()
-                self._update_status_label(self._stream_manager.is_running)
+                self._update_status_label(self._stream_manager.is_running or self._gst_manager.is_running)
                 client.close()
                 return
 

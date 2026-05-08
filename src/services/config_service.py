@@ -242,71 +242,16 @@ class ConfigService(BaseService):
     # ========== МЕДИА НАСТРОЙКИ ==========
 
     def get_media_config(self) -> Dict[str, Any]:
-        """
-        Получить медиа-настройки.
-
-        Returns:
-            Словарь с медиа-настройками
-        """
-        return {
-            'ffmpeg_path': self._config.app.media.ffmpeg_path,
-            'ffplay_path': self._config.app.media.ffplay_path,
-            'vlc_path': self._config.app.media.vlc_path,
-        }
+        return {}
 
     def update_media_config(self, **kwargs) -> bool:
-        """
-        Обновить медиа-настройки.
-
-        Args:
-            **kwargs: Ключ-значение для обновления
-
-        Returns:
-            True если успешно
-        """
-        try:
-            for key, value in kwargs.items():
-                if hasattr(self._config.app.media, key):
-                    setattr(self._config.app.media, key, value)
-            self._logger.info("ConfigService: Media settings updated")
-            return True
-        except Exception as e:
-            self._logger.error(f"ConfigService: Error updating media settings: {e}")
-            return False
+        return True
 
     def get_media_path(self, name: str) -> str:
-        """
-        Получить путь к медиа-утилите.
-
-        Args:
-            name: Имя утилиты (ffmpeg, ffplay, vlc)
-
-        Returns:
-            Путь к исполняемому файлу
-        """
-        return getattr(self._config.app.media, f"{name}_path", name)
+        return name
 
     def update_media_path(self, name: str, path: str) -> bool:
-        """
-        Обновить путь к медиа-утилите.
-
-        Args:
-            name: Имя утилиты (ffmpeg, ffplay, vlc)
-            path: Новый путь
-
-        Returns:
-            True если успешно
-        """
-        try:
-            attr_name = f"{name}_path"
-            if hasattr(self._config.app.media, attr_name):
-                setattr(self._config.app.media, attr_name, path)
-                self._logger.info(f"ConfigService: {name} path updated to {path}")
-                return True
-            return False
-        except Exception as e:
-            self._logger.error(f"ConfigService: Error updating {name} path: {e}")
-            return False
+        return True
 
     # ========== ВАЛИДАЦИЯ ==========
 

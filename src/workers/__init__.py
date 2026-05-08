@@ -2,6 +2,7 @@
 
 from .base import BaseWorker
 from .ffmpeg_stream_manager import FFmpegStreamManager
+from .gstreamer_stream_manager import GStreamerStreamManager
 
 # Import from command workers
 from .command.orchestrator import CommandWorker
@@ -22,6 +23,7 @@ __all__ = [
     # Base
     'BaseWorker',
     'FFmpegStreamManager',
+    'GStreamerStreamManager',
 
     # Command - Models
     'Command',
