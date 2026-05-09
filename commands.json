@@ -3782,7 +3782,7 @@
             {
                 "commands": [
                     {
-                        "text": "py-ini-config set /etc/sddm.conf.d/kde_settings.conf Autologin User kiosk && systemctl restart sddm\nsleep 5\nsudo -u kiosk DISPLAY=:0 XAUTHORITY=/home/kiosk/.Xauthority bash -c '\nxdotool key Tab Tab Tab Tab\nxdotool type --delay 40 \"%param1%\"\nxdotool key Return\n'",
+                        "text": "py-ini-config set /etc/sddm.conf Autologin User kiosk && systemctl restart sddm\nsleep 5\nsudo -u kiosk DISPLAY=:0 XAUTHORITY=/home/kiosk/.Xauthority bash -c '\nxdotool key Tab Tab Tab Tab\nxdotool type --delay 40 \"%param1%\"\nxdotool key Return\n'",
                         "type": "ssh"
                     }
                 ],

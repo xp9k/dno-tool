@@ -5,7 +5,10 @@ a = Analysis(
     ['__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets')],
+    datas=[
+        ('assets', 'assets'),
+        ('src/workers/gst_rtsp_server.py', 'src/workers'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

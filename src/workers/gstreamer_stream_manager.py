@@ -10,6 +10,7 @@ import base64
 import json
 import os
 import shlex
+import sys
 import threading
 import time
 from typing import Optional
@@ -213,20 +214,26 @@ class GStreamerStreamManager(QObject):
             self._reset_state()
             return False
 
-        transport = self._settings.get("transport", "rtsp")
-        if transport == "rtsp":
-            if not self._has_rtsp_launch:
-                self.error.emit(
-                    self.device_iid,
-                    "RTSP недоступен: GstRtspServer не найден. "
-                    "Установите пакеты через кнопку «Установить»."
-                )
-                self._cleanup_client()
-                self._reset_state()
-                return False
-            cmd = self._build_rtsp_pipeline_and_cmd()
-        else:
-            cmd = self._build_remote_cmd()
+        try:
+            transport = self._settings.get("transport", "rtsp")
+            if transport == "rtsp":
+                if not self._has_rtsp_launch:
+                    self.error.emit(
+                        self.device_iid,
+                        "RTSP недоступен: GstRtspServer не найден. "
+                        "Установите пакеты через кнопку «Установить»."
+                    )
+                    self._cleanup_client()
+                    self._reset_state()
+                    return False
+                cmd = self._build_rtsp_pipeline_and_cmd()
+            else:
+                cmd = self._build_remote_cmd()
+        except Exception as e:
+            self.error.emit(self.device_iid, f"Ошибка формирования команды: {e}")
+            self._cleanup_client()
+            self._reset_state()
+            return False
 
         logger.info(f"GStreamerStreamManager: Starting stream on {device.host}")
         logger.debug(f"GStreamerStreamManager: Command: {cmd}")
@@ -700,13 +707,33 @@ class GStreamerStreamManager(QObject):
 
         return cmd
 
+    @staticmethod
+    def _get_rtsp_script_content() -> str:
+        script_name = "gst_rtsp_server.py"
+        candidates = [
+            os.path.join(os.path.dirname(__file__), script_name),
+            os.path.join(getattr(sys, '_MEIPASS', ''), 'src', 'workers', script_name),
+            os.path.join(getattr(sys, '_MEIPASS', ''), script_name),
+        ]
+        for path in candidates:
+            if path and os.path.isfile(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read()
+        import importlib.util
+        spec = importlib.util.find_spec("src.workers.gst_rtsp_server")
+        if spec and spec.origin and os.path.isfile(spec.origin):
+            with open(spec.origin, "r", encoding="utf-8") as f:
+                return f.read()
+        raise FileNotFoundError(
+            f"Cannot find {script_name} for RTSP streaming. "
+            "The file must be available alongside the application binary."
+        )
+
     def _build_rtsp_script_cmd(self, config_json: str, port: int, env_prefix: str, pid_file: str, stop_file: str) -> str:
         """Сгенерировать команду для запуска RTSP Python-скрипта."""
-        script_path = os.path.join(os.path.dirname(__file__), "gst_rtsp_server.py")
         remote_script = "/tmp/dnotool_gst_rtsp_server.py"
 
-        with open(script_path, "r", encoding="utf-8") as f:
-            script_content = f.read()
+        script_content = self._get_rtsp_script_content()
 
         b64 = base64.b64encode(script_content.encode()).decode()
 
