@@ -1,0 +1,59 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="caseGrad" x1="52" y1="36" x2="204" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#475569"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+
+    <linearGradient id="monitorGrad" x1="20" y1="60" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+
+    <linearGradient id="keyboardGrad" x1="60" y1="180" x2="180" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CBD5E1"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </linearGradient>
+
+    <filter id="shadow" x="0" y="0" width="256" height="256" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- PC Tower -->
+  <rect x="170" y="40" width="42" height="136" rx="10" fill="url(#caseGrad)" filter="url(#shadow)"/>
+  <circle cx="191" cy="62" r="4" fill="#22C55E"/>
+  <rect x="180" y="82" width="22" height="40" rx="4" fill="#1E293B"/>
+  <circle cx="191" cy="146" r="10" stroke="#64748B" stroke-width="4"/>
+
+  <!-- Monitor -->
+  <rect x="32" y="52" width="128" height="84" rx="14" fill="url(#monitorGrad)" filter="url(#shadow)"/>
+  <rect x="42" y="62" width="108" height="64" rx="8" fill="#0F172A"/>
+
+  <!-- Screen UI -->
+  <path d="M56 78H108" stroke="#38BDF8" stroke-width="5" stroke-linecap="round"/>
+  <path d="M56 94H96" stroke="#38BDF8" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+  <path d="M56 110H118" stroke="#38BDF8" stroke-width="5" stroke-linecap="round" opacity="0.45"/>
+
+  <!-- Monitor Stand -->
+  <rect x="88" y="136" width="16" height="20" rx="4" fill="#475569"/>
+  <rect x="68" y="154" width="56" height="10" rx="5" fill="#334155"/>
+
+  <!-- Keyboard -->
+  <rect x="52" y="184" width="110" height="24" rx="8" fill="url(#keyboardGrad)" filter="url(#shadow)"/>
+
+  <!-- Keyboard keys -->
+  <g fill="#64748B">
+    <rect x="62" y="192" width="8" height="6" rx="2"/>
+    <rect x="74" y="192" width="8" height="6" rx="2"/>
+    <rect x="86" y="192" width="8" height="6" rx="2"/>
+    <rect x="98" y="192" width="8" height="6" rx="2"/>
+    <rect x="110" y="192" width="8" height="6" rx="2"/>
+    <rect x="122" y="192" width="8" height="6" rx="2"/>
+    <rect x="134" y="192" width="18" height="6" rx="2"/>
+  </g>
+
+  <!-- Mouse -->
+  <rect x="176" y="186" width="22" height="32" rx="11" fill="#CBD5E1" filter="url(#shadow)"/>
+  <path d="M187 190V202" stroke="#64748B" stroke-width="2" stroke-linecap="round"/>
+</svg>

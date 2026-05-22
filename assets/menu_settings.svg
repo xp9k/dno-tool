@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Gear body -->
+  <circle cx="64" cy="64" r="32" fill="#5352ED"/>
+  <!-- Gear teeth -->
+  <g fill="#5352ED" stroke="#E8E8E8" stroke-width="1">
+    <rect x="58" y="22" width="12" height="12" rx="2"/>
+    <rect x="58" y="94" width="12" height="12" rx="2"/>
+    <rect x="22" y="58" width="12" height="12" rx="2"/>
+    <rect x="94" y="58" width="12" height="12" rx="2"/>
+    <rect x="33" y="33" width="12" height="12" rx="2" transform="rotate(-45 39 39)"/>
+    <rect x="83" y="33" width="12" height="12" rx="2" transform="rotate(45 89 39)"/>
+    <rect x="33" y="83" width="12" height="12" rx="2" transform="rotate(45 39 89)"/>
+    <rect x="83" y="83" width="12" height="12" rx="2" transform="rotate(-45 89 89)"/>
+  </g>
+  <!-- Gear center -->
+  <circle cx="64" cy="64" r="32" fill="#5352ED"/>
+  <circle cx="64" cy="64" r="24" fill="none" stroke="#70A1FF" stroke-width="6"/>
+  <circle cx="64" cy="64" r="14" fill="#FFFFFF" opacity="0.1"/>
+  <circle cx="64" cy="64" r="8" fill="#FFFFFF"/>
+  <!-- Detail lines -->
+  <circle cx="64" cy="64" r="32" fill="none" stroke="#E8E8E8" stroke-width="1.5"/>
+</svg>

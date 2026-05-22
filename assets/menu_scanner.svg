@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Background squircle -->
+  <!-- Radar screen -->
+  <circle cx="64" cy="64" r="38" fill="#1A1A2E" stroke="#FFFFFF" stroke-width="2" opacity="0.9"/>
+  <circle cx="64" cy="64" r="26" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.3"/>
+  <circle cx="64" cy="64" r="14" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.3"/>
+  <line x1="26" y1="64" x2="102" y2="64" stroke="#FFFFFF" stroke-width="1" opacity="0.2"/>
+  <line x1="64" y1="26" x2="64" y2="102" stroke="#FFFFFF" stroke-width="1" opacity="0.2"/>
+  <!-- Radar sweep -->
+  <path d="M64 64 L64 30 A34 34 0 0 1 94 42 Z" fill="#FFFFFF" opacity="0.15"/>
+  <!-- Host dots -->
+  <circle cx="52" cy="48" r="4" fill="#00D2D3"/>
+  <circle cx="52" cy="48" r="4" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <circle cx="80" cy="72" r="3" fill="#FF6B6B"/>
+  <circle cx="80" cy="72" r="3" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <circle cx="44" cy="78" r="2.5" fill="#FFD93D"/>
+  <circle cx="44" cy="78" r="2.5" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <!-- Center -->
+  <circle cx="64" cy="64" r="5" fill="#FFFFFF"/>
+  <circle cx="64" cy="64" r="5" fill="none" stroke="#EE5A24" stroke-width="1.5"/>
+</svg>

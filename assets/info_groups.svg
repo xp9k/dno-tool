@@ -1,0 +1,37 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#CBD5E1"/>
+    </linearGradient>
+
+    <filter id="shadow" x="0" y="0" width="256" height="256" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="24" y="24" width="208" height="208" rx="44" fill="url(#bg)" filter="url(#shadow)"/>
+
+  <!-- Center user -->
+  <circle cx="128" cy="92" r="22" fill="url(#card)"/>
+  <path d="M96 152C96 132 112 120 128 120C144 120 160 132 160 152V160H96V152Z" fill="url(#card)"/>
+
+  <!-- Left user -->
+  <circle cx="76" cy="112" r="16" fill="#E2E8F0" opacity="0.9"/>
+  <path d="M52 164C52 148 64 140 76 140C88 140 100 148 100 164V170H52V164Z" fill="#E2E8F0" opacity="0.9"/>
+
+  <!-- Right user -->
+  <circle cx="180" cy="112" r="16" fill="#E2E8F0" opacity="0.9"/>
+  <path d="M156 164C156 148 168 140 180 140C192 140 204 148 204 164V170H156V164Z" fill="#E2E8F0" opacity="0.9"/>
+
+  <!-- Bottom decorative dots -->
+  <circle cx="128" cy="196" r="6" fill="#FFFFFF" opacity="0.9"/>
+  <circle cx="108" cy="196" r="4" fill="#E0E7FF" opacity="0.7"/>
+  <circle cx="148" cy="196" r="4" fill="#E0E7FF" opacity="0.7"/>
+</svg>

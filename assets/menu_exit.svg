@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="exitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF4757"/>
+      <stop offset="100%" stop-color="#C0392B"/>
+    </linearGradient>
+  </defs>
+  <!-- Door frame -->
+  <path d="M40 30 V98 H88 V30" fill="none" stroke="url(#exitGrad)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Door - slightly open -->
+  <path d="M48 38 L65 45 V88 L50 82 Z" fill="url(#exitGrad)"/>
+  <!-- Exit Arrow -->
+  <path d="M64 60 L85 60" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" opacity="0.9"/>
+  <path d="M75 50 L85 60 L75 70" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+</svg>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="gpuBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A55EEA"/>
+      <stop offset="100%" stop-color="#8854D0"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="36" width="80" height="52" rx="8" fill="url(#gpuBg)"/>
+  <rect x="24" y="44" width="48" height="36" rx="4" fill="#2F3542"/>
+  <rect x="28" y="48" width="20" height="12" rx="2" fill="#A55EEA" opacity="0.5"/>
+  <rect x="52" y="48" width="16" height="12" rx="2" fill="#2F3542" opacity="0.5"/>
+  <rect x="28" y="64" width="40" height="8" rx="2" fill="#576574"/>
+  <rect x="32" y="66" width="32" height="4" rx="1" fill="#FF6B6B" opacity="0.6"/>
+  <path d="M52 74 L88 74 Q96 74 96 66 L96 58 Q96 50 88 50 L80 50" stroke="#747D8C" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <circle cx="68" cy="82" r="4" fill="#2F3542"/>
+  <circle cx="80" cy="82" r="4" fill="#2F3542"/>
+  <circle cx="68" cy="82" r="2" fill="#FFD32A"/>
+  <circle cx="80" cy="82" r="2" fill="#00FF41"/>
+  <rect x="96" y="44" width="12" height="8" rx="2" fill="#747D8C"/>
+  <rect x="96" y="56" width="12" height="8" rx="2" fill="#747D8C"/>
+  <rect x="96" y="68" width="12" height="8" rx="2" fill="#747D8C"/>
+</svg>

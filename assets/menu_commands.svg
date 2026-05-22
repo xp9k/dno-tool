@@ -1,0 +1,79 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gearDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B4552"/>
+      <stop offset="100%" stop-color="#1F2732"/>
+    </linearGradient>
+
+    <linearGradient id="gearBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4AA3FF"/>
+      <stop offset="100%" stop-color="#0066CC"/>
+    </linearGradient>
+
+    <linearGradient id="gearLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F2F4F7"/>
+      <stop offset="100%" stop-color="#C8D0DA"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Large Gear -->
+  <g transform="translate(350 430)" filter="url(#shadow)">
+    <path d="M0-180
+      L25-175 L40-215 L80-200 L70-160
+      L110-145 L140-175 L175-145 L150-110
+      L175-70 L215-80 L230-40 L190-25
+      L195 0 L230 20 L215 60 L175 50
+      L160 90 L185 120 L150 150 L120 125
+      L80 145 L90 185 L50 200 L30 165
+      L0 170 L-20 205 L-60 190 L-50 150
+      L-90 135 L-120 165 L-155 135 L-130 95
+      L-165 60 L-205 75 L-220 35 L-180 15
+      L-185-20 L-220-40 L-205-80 L-165-70
+      L-145-110 L-170-145 L-135-175 L-100-150
+      L-65-170 L-75-210 L-35-225 L-15-185 Z"
+      fill="url(#gearDark)" stroke="#111827" stroke-width="6"/>
+    <circle cx="0" cy="0" r="78" fill="#2B3440" stroke="#111827" stroke-width="6"/>
+  </g>
+
+  <!-- Blue Gear -->
+  <g transform="translate(710 300) scale(0.72)" filter="url(#shadow)">
+    <path d="M0-180
+      L25-175 L40-215 L80-200 L70-160
+      L110-145 L140-175 L175-145 L150-110
+      L175-70 L215-80 L230-40 L190-25
+      L195 0 L230 20 L215 60 L175 50
+      L160 90 L185 120 L150 150 L120 125
+      L80 145 L90 185 L50 200 L30 165
+      L0 170 L-20 205 L-60 190 L-50 150
+      L-90 135 L-120 165 L-155 135 L-130 95
+      L-165 60 L-205 75 L-220 35 L-180 15
+      L-185-20 L-220-40 L-205-80 L-165-70
+      L-145-110 L-170-145 L-135-175 L-100-150
+      L-65-170 L-75-210 L-35-225 L-15-185 Z"
+      fill="url(#gearBlue)" stroke="#0050A8" stroke-width="6"/>
+    <circle cx="0" cy="0" r="78" fill="#1B7FE0" stroke="#0050A8" stroke-width="6"/>
+  </g>
+
+  <!-- Light Gear -->
+  <g transform="translate(700 700) scale(0.58)" filter="url(#shadow)">
+    <path d="M0-180
+      L25-175 L40-215 L80-200 L70-160
+      L110-145 L140-175 L175-145 L150-110
+      L175-70 L215-80 L230-40 L190-25
+      L195 0 L230 20 L215 60 L175 50
+      L160 90 L185 120 L150 150 L120 125
+      L80 145 L90 185 L50 200 L30 165
+      L0 170 L-20 205 L-60 190 L-50 150
+      L-90 135 L-120 165 L-155 135 L-130 95
+      L-165 60 L-205 75 L-220 35 L-180 15
+      L-185-20 L-220-40 L-205-80 L-165-70
+      L-145-110 L-170-145 L-135-175 L-100-150
+      L-65-170 L-75-210 L-35-225 L-15-185 Z"
+      fill="url(#gearLight)" stroke="#AAB4C0" stroke-width="6"/>
+    <circle cx="0" cy="0" r="78" fill="#E5EAF0" stroke="#AAB4C0" stroke-width="6"/>
+  </g>
+</svg>

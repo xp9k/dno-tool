@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Server rack -->
+  <rect x="28" y="32" width="38" height="62" rx="6" fill="#20BF6B"/>
+  <!-- Server details -->
+  <rect x="34" y="40" width="26" height="8" rx="2" fill="#26DE81" opacity="0.8"/>
+  <circle cx="38" cy="44" r="2" fill="#20BF6B"/>
+  <circle cx="44" cy="44" r="2" fill="#20BF6B"/>
+  <rect x="34" y="54" width="26" height="8" rx="2" fill="#26DE81" opacity="0.6"/>
+  <circle cx="38" cy="58" r="2" fill="#20BF6B"/>
+  <rect x="34" y="68" width="26" height="8" rx="2" fill="#26DE81" opacity="0.4"/>
+  <circle cx="38" cy="72" r="2" fill="#20BF6B"/>
+  <!-- Arrow -->
+  <path d="M82 42 L82 82" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M72 58 L82 42 L92 58" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M72 66 L82 82 L92 66" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Globe/Cloud hint -->
+  <circle cx="82" cy="26" r="10" fill="#20BF6B" opacity="0.2"/>
+  <path d="M76 26 Q82 20 88 26 Q82 32 76 26" fill="#20BF6B" opacity="0.4"/>
+</svg>

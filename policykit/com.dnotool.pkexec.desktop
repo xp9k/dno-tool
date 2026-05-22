@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DNOTool (Administrator)
+Name[ru]=DNOTool (Администратор)
+Comment=Network device management tool with administrative privileges
+Comment[ru]=Инструмент управления сетевыми устройствами с правами администратора
+# Запускаем через обертку, которая настроит переменные темы
+Exec=dnotool-admin
+Icon=dnotool
+Terminal=false
+Categories=System;Network;Settings;
+Keywords=network;ssh;sftp;ping;admin;
+StartupNotify=true
+X-PolicyKit-Action-Id=com.dnotool.run-admin

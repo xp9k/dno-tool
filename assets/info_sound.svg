@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="micGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5352ED"/>
+      <stop offset="100%" stop-color="#3232C2"/>
+    </linearGradient>
+  </defs>
+  <!-- Microphone Head -->
+  <rect x="44" y="30" width="40" height="55" rx="20" fill="url(#micGrad)"/>
+  <!-- Microphone Grill Details -->
+  <line x1="48" y1="40" x2="80" y2="40" stroke="#FFFFFF" stroke-width="2" opacity="0.3"/>
+  <line x1="48" y1="48" x2="80" y2="48" stroke="#FFFFFF" stroke-width="2" opacity="0.3"/>
+  <line x1="48" y1="56" x2="80" y2="56" stroke="#FFFFFF" stroke-width="2" opacity="0.3"/>
+  <line x1="48" y1="64" x2="80" y2="64" stroke="#FFFFFF" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Microphone Stand / Neck -->
+  <rect x="58" y="85" width="12" height="15" fill="#2F3542"/>
+  
+  <!-- Base / Tripod -->
+  <path d="M40 115 Q64 100 88 115" fill="none" stroke="#2F3542" stroke-width="8" stroke-linecap="round"/>
+  <line x1="64" y1="100" x2="64" y2="115" stroke="#2F3542" stroke-width="8" stroke-linecap="round"/>
+</svg>

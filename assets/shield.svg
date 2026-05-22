@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Shield body -->
+  <path d="M64 24 Q88 24 96 36 Q104 48 100 72 Q96 96 64 108 Q32 96 28 72 Q24 48 32 36 Q40 24 64 24 Z" fill="#5F27CD"/>
+  <!-- Inner border -->
+  <path d="M64 32 Q82 32 88 42 Q94 52 90 70 Q86 88 64 98 Q42 88 38 70 Q34 52 40 42 Q46 32 64 32 Z" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.2"/>
+  <!-- Checkmark -->
+  <path d="M48 62 L58 72 L80 48" stroke="#26DE81" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M48 62 L58 72 L80 48" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.5"/>
+  <!-- Star accent -->
+  <circle cx="64" cy="48" r="6" fill="#FFD32A"/>
+  <path d="M64 44 L65 47 L68 47 L66 49 L67 52 L64 50 L61 52 L62 49 L60 47 L63 47 Z" fill="#5F27CD"/>
+</svg>

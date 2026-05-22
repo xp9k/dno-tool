@@ -1,0 +1,38 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="monitor" x1="48" y1="40" x2="208" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+
+    <linearGradient id="screen" x1="64" y1="56" x2="192" y2="144" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E293B"/>
+    </linearGradient>
+
+    <filter id="shadow" x="0" y="0" width="256" height="256" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Monitor body -->
+  <rect x="40" y="40" width="176" height="120" rx="20" fill="url(#monitor)" filter="url(#shadow)"/>
+
+  <!-- Screen -->
+  <rect x="56" y="56" width="144" height="88" rx="12" fill="url(#screen)"/>
+
+  <!-- Screen glow -->
+  <path d="M70 70H140" stroke="#38BDF8" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  <path d="M70 90H120" stroke="#38BDF8" stroke-width="6" stroke-linecap="round" opacity="0.45"/>
+  <path d="M70 110H155" stroke="#38BDF8" stroke-width="6" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Webcam -->
+  <circle cx="128" cy="48" r="3" fill="#BFDBFE"/>
+
+  <!-- Stand -->
+  <rect x="116" y="160" width="24" height="26" rx="6" fill="#475569"/>
+  <rect x="88" y="184" width="80" height="14" rx="7" fill="#334155"/>
+
+  <!-- Small PC indicator -->
+  <circle cx="186" cy="130" r="4" fill="#22C55E"/>
+</svg>

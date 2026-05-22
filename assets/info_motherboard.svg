@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect x="18" y="14" width="92" height="100" rx="4" fill="#2F8844"/>
+  <rect x="22" y="18" width="84" height="92" rx="2" fill="#374A3E"/>
+  <!-- CPU socket -->
+  <rect x="30" y="26" width="32" height="32" rx="2" fill="#576574"/>
+  <rect x="34" y="30" width="24" height="24" rx="1" fill="#747D8C"/>
+  <rect x="38" y="34" width="16" height="16" rx="1" fill="#2F3542"/>
+  <!-- Northbridge chip -->
+  <rect x="70" y="26" width="24" height="16" rx="2" fill="#576574"/>
+  <rect x="72" y="28" width="20" height="12" rx="1" fill="#5352ED" opacity="0.6"/>
+  <rect x="74" y="32" width="8" height="2" rx="1" fill="#FFFFFF" opacity="0.4"/>
+  <rect x="74" y="36" width="12" height="2" rx="1" fill="#FFFFFF" opacity="0.3"/>
+  <!-- RAM slots -->
+  <rect x="70" y="50" width="28" height="6" rx="1" fill="#576574"/>
+  <rect x="72" y="52" width="10" height="2" rx="0.5" fill="#FF6B6B" opacity="0.7"/>
+  <rect x="70" y="60" width="28" height="6" rx="1" fill="#576574"/>
+  <rect x="72" y="62" width="10" height="2" rx="0.5" fill="#FF6B6B" opacity="0.7"/>
+  <!-- PCIe slot -->
+  <rect x="30" y="66" width="32" height="6" rx="1" fill="#576574"/>
+  <rect x="32" y="68" width="14" height="2" rx="0.5" fill="#FFD32A" opacity="0.6"/>
+  <!-- SATA ports -->
+  <rect x="30" y="78" width="6" height="8" rx="1" fill="#FF6B6B" opacity="0.8"/>
+  <rect x="40" y="78" width="6" height="8" rx="1" fill="#FF6B6B" opacity="0.8"/>
+  <rect x="50" y="78" width="6" height="8" rx="1" fill="#FF6B6B" opacity="0.8"/>
+  <!-- 24-pin connector -->
+  <rect x="18" y="30" width="8" height="24" rx="2" fill="#E1A91B" opacity="0.8"/>
+  <rect x="19" y="32" width="6" height="4" rx="1" fill="#C79415"/>
+  <rect x="19" y="38" width="6" height="4" rx="1" fill="#C79415"/>
+  <rect x="19" y="44" width="6" height="4" rx="1" fill="#C79415"/>
+  <!-- ATX power pins dots -->
+  <rect x="18" y="60" width="6" height="10" rx="1" fill="#747D8C"/>
+  <!-- Capacitors -->
+  <circle cx="32" cy="68" r="3" fill="#2F3542" opacity="0.5"/>
+  <circle cx="56" cy="90" r="3" fill="#2F3542" opacity="0.5"/>
+  <circle cx="70" cy="76" r="2.5" fill="#2F3542" opacity="0.5"/>
+  <!-- Rear I/O panel -->
+  <rect x="28" y="14" width="56" height="6" rx="1" fill="#576574"/>
+  <rect x="32" y="15" width="8" height="4" rx="1" fill="#2F3542"/>
+  <rect x="44" y="15" width="8" height="4" rx="1" fill="#2F3542"/>
+  <rect x="56" y="15" width="8" height="4" rx="1" fill="#2F3542"/>
+  <rect x="68" y="15" width="8" height="4" rx="1" fill="#0984E3" opacity="0.7"/>
+  <!-- Mounting holes -->
+  <circle cx="22" cy="18" r="2.5" fill="#1A1A2E"/>
+  <circle cx="102" cy="18" r="2.5" fill="#1A1A2E"/>
+  <circle cx="22" cy="108" r="2.5" fill="#1A1A2E"/>
+  <circle cx="102" cy="108" r="2.5" fill="#1A1A2E"/>
+</svg>
