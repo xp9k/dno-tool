@@ -3,11 +3,13 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, 
                                 QPushButton, QTextEdit, QLabel, QMessageBox,
                                 QSplitter, QFrame, QHeaderView, QTableWidget,
-                                QTableWidgetItem, QSizePolicy)
+                                QTableWidgetItem, QSizePolicy, QComboBox)
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QIcon
 from src.ui.widgets.device_tree import DeviceTreeView, CustomTreeItem
 import os
+import base64
+import struct
 from src.config import *
 from src.logger import logger
 from src.domain.models.device import DeviceModel
@@ -15,6 +17,7 @@ from typing import List
 from src.utils.fs_utils import ensure_user_owned
 from src.ui.dialogs.tools.known_hosts import KnownHostsDialog
 from src.workers.key_installer import KeyInstallerWorker, RESULT_ERROR, RESULT_SUCCESS, RESULT_IGNORE, RESULT_ABORT
+from src.workers.command.executor_base import load_private_key, get_default_key_path, _detect_key_type, _KEY_TYPE_NAMES
 
 
 class SSHManageDialog(QDialog):
@@ -22,7 +25,7 @@ class SSHManageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Управление SSH ключами")
         self.resize(800, 500)
-        self.public_key_path = DEFAULT_SSH_PUBLIC_KEY_PATH if os.path.exists(DEFAULT_SSH_PUBLIC_KEY_PATH) else os.path.expanduser('~/.ssh/id_rsa.pub')
+        self.public_key_path = DEFAULT_SSH_PUBLIC_KEY_PATH if os.path.exists(DEFAULT_SSH_PUBLIC_KEY_PATH) else os.path.join(os.path.expanduser('~'), '.ssh', 'id_ed25519.pub')
         self._init_ui(tree_data)
 
         self.installation = False
@@ -113,15 +116,17 @@ class SSHManageDialog(QDialog):
 
     def check_key_pair_match(self, privkey_path, pubkey_path):
         """
-        Проверяет, соответствует ли публичный ключ приватному (RSA).
+        Проверяет, соответствует ли публичный ключ приватному (любого типа).
         Возвращает True, если соответствует, иначе False.
         """
         import paramiko
         if not os.path.exists(privkey_path) or not os.path.exists(pubkey_path):
             return False
         try:
-            key = paramiko.RSAKey.from_private_key_file(privkey_path, password="")
-            derived_pub = f"ssh-rsa {key.get_base64()} {key.get_name()}"
+            key = load_private_key(privkey_path)
+            if key is None:
+                return False
+            derived_pub = f"{key.get_name()} {key.get_base64()} {key.get_name()}"
             with open(pubkey_path, 'r', encoding='utf-8') as f:
                 pubkey = f.read().strip()
             derived_key = ' '.join(derived_pub.split()[:2])
@@ -132,8 +137,11 @@ class SSHManageDialog(QDialog):
             return False
 
     def check_key_status(self):
-        self.pubkey_path = os.path.join(os.path.dirname(self.public_key_path), 'id_rsa.pub')
-        self.privkey_path = os.path.join(os.path.dirname(self.public_key_path), 'id_rsa')
+        privkey_path = get_default_key_path()
+        key_type = _detect_key_type(privkey_path) or "ssh-ed25519"
+        pubkey_basename = os.path.basename(privkey_path) + ".pub"
+        self.pubkey_path = os.path.join(os.path.dirname(privkey_path), pubkey_basename)
+        self.privkey_path = privkey_path
         pubkey_exists = os.path.exists(self.pubkey_path)
         privkey_exists = os.path.exists(self.privkey_path)
         icon_ok = f'<img src="{ICONS["result_success"]}" width="14" height="14">'
@@ -168,7 +176,6 @@ class SSHManageDialog(QDialog):
         dialog = QDialog(self)
         dialog.setWindowTitle("Управление SSH ключами")
         layout = QVBoxLayout(dialog)
-        # Создаём горизонтальный layout БЕЗ указания dialog в конструкторе
         btn_layout = QHBoxLayout()
         
         info_label = QLabel()
@@ -179,11 +186,20 @@ class SSHManageDialog(QDialog):
             layout.addWidget(info_label)
             btn_layout.addWidget(gen_pub_btn)
         else:
-            # info_label.setText("Управление SSH ключами")
             layout.addWidget(info_label)
         
+        key_type_layout = QHBoxLayout()
+        key_type_label = QLabel("Тип ключа:")
+        key_type_combo = QComboBox()
+        key_type_combo.addItem("Ed25519 (рекомендуется)", "ed25519")
+        key_type_combo.addItem("RSA 4096", "rsa")
+        key_type_combo.addItem("ECDSA", "ecdsa")
+        key_type_layout.addWidget(key_type_label)
+        key_type_layout.addWidget(key_type_combo)
+        layout.addLayout(key_type_layout)
+        
         gen_new_btn = QPushButton("Сгенерировать новую пару ключей")
-        gen_new_btn.clicked.connect(lambda: self.generate_new_pair(dialog))
+        gen_new_btn.clicked.connect(lambda: self.generate_new_pair(dialog, key_type_combo.currentData()))
         btn_layout.addWidget(gen_new_btn)
         
         close_btn = QPushButton("Закрыть")
@@ -194,17 +210,39 @@ class SSHManageDialog(QDialog):
         
         dialog.exec()
 
-    def generate_key(self):
+    def generate_key(self, key_type: str = "ed25519"):
         import paramiko
+        ssh_dir = os.path.dirname(self.privkey_path) or os.path.expanduser("~/.ssh")
+        key_names = {"ed25519": "id_ed25519", "rsa": "id_rsa", "ecdsa": "id_ecdsa"}
+        priv_name = key_names.get(key_type, "id_ed25519")
+        self.privkey_path = os.path.join(ssh_dir, priv_name)
+        self.pubkey_path = os.path.join(ssh_dir, priv_name + ".pub")
         try:
-            key = paramiko.RSAKey.generate(4096)
-            key.write_private_key_file(self.privkey_path)
-            pub_key_str = f"ssh-rsa {key.get_base64()} dnotool-generated-key\n"
+            if key_type == "ed25519":
+                from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+                from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, NoEncryption, PrivateFormat
+                priv = Ed25519PrivateKey.generate()
+                priv_bytes = priv.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.OpenSSH, encryption_algorithm=NoEncryption())
+                with open(self.privkey_path, 'wb') as f:
+                    f.write(priv_bytes)
+                pub_bytes = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+                type_name = b"ssh-ed25519"
+                blob = struct.pack(">I", len(type_name)) + type_name + struct.pack(">I", len(pub_bytes)) + pub_bytes
+                pub_key_str = f"ssh-ed25519 {base64.b64encode(blob).decode()} dnotool-generated-key\n"
+            elif key_type == "ecdsa":
+                key = paramiko.ECDSAKey.generate()
+                key.write_private_key_file(self.privkey_path)
+                pub_key_str = f"{key.get_name()} {key.get_base64()} dnotool-generated-key\n"
+            else:
+                key = paramiko.RSAKey.generate(4096)
+                key.write_private_key_file(self.privkey_path)
+                pub_key_str = f"ssh-rsa {key.get_base64()} dnotool-generated-key\n"
             with open(self.pubkey_path, 'w', encoding='utf-8') as f:
                 f.write(pub_key_str)
             ensure_user_owned(self.privkey_path)
             ensure_user_owned(self.pubkey_path)
-            QMessageBox.information(self, "SSH ключ", "Ключи успешно сгенерированы.")
+            type_label = {"ed25519": "Ed25519", "ecdsa": "ECDSA", "rsa": "RSA 4096"}.get(key_type, key_type.upper())
+            QMessageBox.information(self, "SSH ключ", f"{type_label} ключи успешно сгенерированы.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка генерации ключей: {e}")
         self.check_key_status()
@@ -212,8 +250,10 @@ class SSHManageDialog(QDialog):
 
     def _derive_public_key_from_private(self, privkey_path):
         import paramiko
-        key = paramiko.RSAKey.from_private_key_file(privkey_path, password="")
-        return f"ssh-rsa {key.get_base64()} {key.get_name()}\n"
+        key = load_private_key(privkey_path)
+        if key is None:
+            raise ValueError(f"Не удалось загрузить приватный ключ: {privkey_path}")
+        return f"{key.get_name()} {key.get_base64()} dnotool-generated-key\n"
 
     def generate_public_from_private_key(self):
         """Generate public key from existing private key"""
@@ -240,29 +280,25 @@ class SSHManageDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка генерации публичного ключа: {e}")
 
-    def generate_new_pair(self, dialog):
+    def generate_new_pair(self, dialog, key_type: str = "ed25519"):
         """Generate new key pair (both private and public)"""
+        type_label = {"ed25519": "Ed25519", "ecdsa": "ECDSA", "rsa": "RSA 4096"}.get(key_type, key_type.upper())
         if QMessageBox.question(
             self,
             "Подтверждение",
-            "Это действие удалит существующие ключи. Продолжить?",
+            f"Это действие удалит существующие ключи и создаст {type_label} пару. Продолжить?",
             QMessageBox.Yes | QMessageBox.No
         ) == QMessageBox.Yes:
             # Remove old keys if they exist
-            if os.path.exists(self.pubkey_path):
-                try:
-                    os.remove(self.pubkey_path)
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", f"Ошибка удаления публичного ключа: {e}")
-                    return
-            if os.path.exists(self.privkey_path):
-                try:
-                    os.remove(self.privkey_path)
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", f"Ошибка удаления приватного ключа: {e}")
-                    return
-                    
-            self.generate_key()
+            for path in (self.pubkey_path, self.privkey_path):
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except Exception as e:
+                        QMessageBox.critical(self, "Ошибка", f"Ошибка удаления ключа: {e}")
+                        return
+                        
+            self.generate_key(key_type=key_type)
             dialog.close()
 
     

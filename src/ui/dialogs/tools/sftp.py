@@ -482,6 +482,7 @@ class ConnectionWorker(QThread):
                 port=port,
                 username=creds.username,
                 password=creds.password,
+                pkey=creds.private_key,
                 timeout=config.app.ssh.connect_timeout,
                 banner_timeout=config.app.ssh.connect_timeout,
                 auth_timeout=config.app.ssh.ssh_connect_timeout

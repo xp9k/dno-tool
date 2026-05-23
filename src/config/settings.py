@@ -156,8 +156,8 @@ config_folder_name = ".dnotool"
 DEFAULT_SETTINGS_FILE = expanduser('~') + os.sep + config_folder_name + os.sep + 'settings.json' # 'settings.json'
 DEFAULT_COMMANDS_FILE = expanduser('~') + os.sep + config_folder_name + os.sep + 'commands.json' #'commands.json'
 DEFAULT_HOSTS_FILE = expanduser('~') + os.sep + config_folder_name + os.sep + 'hosts.json' #'hosts.json'
-DEFAULT_SSH_PRIVATE_KEY_PATH = expanduser('~') + os.sep + '.ssh' + os.sep + 'id_rsa' #'~/.ssh/id_rsa'
-DEFAULT_SSH_PUBLIC_KEY_PATH = expanduser('~') + os.sep + '.ssh' + os.sep + 'id_rsa.pub' #'~/.ssh/id_rsa.pub' 
+DEFAULT_SSH_PRIVATE_KEY_PATH = expanduser('~') + os.sep + '.ssh' + os.sep + 'id_ed25519' #'~/.ssh/id_ed25519'
+DEFAULT_SSH_PUBLIC_KEY_PATH = expanduser('~') + os.sep + '.ssh' + os.sep + 'id_ed25519.pub' #'~/.ssh/id_ed25519.pub'
 LOGS_PATH = expanduser('~') + os.sep + config_folder_name + os.sep  #'~/.dnotool'
 
 SSH_RECV_BUFFER_SIZE = 4096

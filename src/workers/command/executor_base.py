@@ -14,9 +14,67 @@ import os
 
 import paramiko
 
+_SSH_DIR = os.path.join(os.path.expanduser("~"), ".ssh")
 
-# Путь к приватному ключу
-PRIVATE_KEY_PATH = os.path.expanduser("~") + os.sep + ".ssh" + os.sep + "id_rsa"
+_KEY_TYPE_NAMES = {
+    "id_ed25519": "ssh-ed25519",
+    "id_rsa": "ssh-rsa",
+    "id_ecdsa": "ecdsa-sha2-nistp256",
+}
+
+_KEY_CLASSES = [
+    paramiko.Ed25519Key,
+    paramiko.RSAKey,
+    paramiko.ECDSAKey,
+]
+
+
+def _detect_key_type(privkey_path: str) -> Optional[str]:
+    """Определяет тип ключа по имени файла (без чтения файла)."""
+    basename = os.path.basename(privkey_path)
+    for prefix, type_name in _KEY_TYPE_NAMES.items():
+        if basename == prefix or basename.startswith(prefix + "."):
+            return type_name
+    return None
+
+
+def load_private_key(key_path: str, password: str = "") -> Optional[paramiko.PKey]:
+    """Загружает приватный SSH-ключ, автоматически определяя тип (Ed25519, RSA, ECDSA, DSA).
+
+    Args:
+        key_path: Путь к файлу приватного ключа.
+        password: Пароль от ключа (пустая строка — без пароля).
+
+    Returns:
+        Объект PKey или None, если ключ не удалось загрузить.
+
+    Raises:
+        paramiko.PasswordRequiredException: если ключ защищён паролем.
+    """
+    for key_class in _KEY_CLASSES:
+        try:
+            return key_class.from_private_key_file(key_path, password)
+        except paramiko.PasswordRequiredException:
+            raise
+        except Exception:
+            continue
+    return None
+
+
+def get_default_key_path() -> str:
+    """Возвращает путь к приватному ключу по умолчанию.
+
+    Приоритет: id_ed25519 > id_rsa > id_ecdsa.
+    Если ни один файл не найден, возвращает id_ed25519.
+    """
+    for name in ("id_ed25519", "id_rsa", "id_ecdsa"):
+        path = os.path.join(_SSH_DIR, name)
+        if os.path.exists(path):
+            return path
+    return os.path.join(_SSH_DIR, "id_ed25519")
+
+
+PRIVATE_KEY_PATH = get_default_key_path()
 
 
 def _is_set(value: Optional[str]) -> bool:
@@ -73,8 +131,11 @@ def get_credentials(
     private_key = None
     if use_key and os.path.exists(key_path):
         try:
-            private_key = paramiko.RSAKey.from_private_key_file(key_path, "")
-            logger.debug(f"Загружен SSH ключ: {key_path}")
+            private_key = load_private_key(key_path)
+            if private_key:
+                logger.debug(f"Загружен SSH ключ ({private_key.get_name()}): {key_path}")
+            else:
+                logger.warning(f"Не удалось определить тип приватного ключа {key_path}")
         except paramiko.PasswordRequiredException:
             logger.warning(f"Приватный ключ {key_path} защищён паролем, пропускаем")
         except Exception as e:
