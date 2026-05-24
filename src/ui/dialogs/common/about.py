@@ -16,7 +16,7 @@ from PySide6.QtGui import QFont, QCursor, QDesktopServices
 from PySide6.QtCore import QUrl
 
 from src import __version__
-from src.services.updater import check_for_update
+from src.services.updater import check_for_update, is_installed_as_package
 from src.services.updater import _get_headers, _is_version_tag, _get_downloads_dir
 
 import urllib.request
@@ -190,18 +190,29 @@ class AboutDialog(QDialog):
         latest = result.get("latest_version", "?")
 
         if result.get("update_available"):
-            self.version_label.setText(
-                f"<font color='red'>Доступна новая версия: {latest} "
-                f"(текущая {current})</font>"
-            )
-            self.update_btn.setText(f"Обновить до v{latest}")
-            self.update_btn.show()
+            if is_installed_as_package():
+                self.version_label.setText(
+                    f"<font color='#1976D2'>Доступна новая версия: {latest} "
+                    f"(текущая {current})<br>"
+                    "Обновите пакет через менеджер пакетов: "
+                    "<b>dnf update dnotool</b></font>"
+                )
+            else:
+                self.version_label.setText(
+                    f"<font color='red'>Доступна новая версия: {latest} "
+                    f"(текущая {current})</font>"
+                )
+                self.update_btn.setText(f"Обновить до v{latest}")
+                self.update_btn.show()
         else:
             self.version_label.setText(
                 f"<font color='green'>Установлена последняя версия ({current})</font>"
             )
 
     def _on_update_click(self):
+        if is_installed_as_package():
+            self.update_btn.hide()
+            return
         self.update_btn.hide()
         self.version_label.setText("Загрузка обновления...")
 

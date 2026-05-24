@@ -8,9 +8,11 @@
 """
 
 import os
+import sys
 import json
 import shutil
 import platform
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -30,6 +32,27 @@ try:
     CURRENT_VERSION = __version__
 except ImportError:
     CURRENT_VERSION = "0.0.0"
+
+
+def is_installed_as_package() -> bool:
+    """Определить, установлено ли приложение как системный пакет (RPM/dnf)."""
+    if platform.system() != "Linux":
+        return False
+    try:
+        exe_path = os.readlink("/proc/self/exe") if os.path.islink("/proc/self/exe") else os.path.abspath(sys.argv[0])
+    except OSError:
+        exe_path = os.path.abspath(sys.argv[0])
+    try:
+        result = subprocess.run(
+            ["rpm", "-qf", exe_path],
+            capture_output=True, text=True, timeout=5
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    parent = str(Path(exe_path).resolve().parent)
+    system_dirs = {"/usr/bin", "/usr/sbin", "/usr/local/bin"}
+    return parent in system_dirs
 
 
 def _get_headers(token: Optional[str] = None) -> Dict[str, str]:
