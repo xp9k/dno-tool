@@ -45,14 +45,11 @@ def is_installed_as_package() -> bool:
     try:
         result = subprocess.run(
             ["rpm", "-qf", exe_path],
-            capture_output=True, text=True, timeout=5
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5
         )
         return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    parent = str(Path(exe_path).resolve().parent)
-    system_dirs = {"/usr/bin", "/usr/sbin", "/usr/local/bin"}
-    return parent in system_dirs
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
 
 
 def _get_headers(token: Optional[str] = None) -> Dict[str, str]:
