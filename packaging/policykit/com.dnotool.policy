@@ -16,9 +16,9 @@
       <allow_inactive>no</allow_inactive>
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/dnotool</annotate>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/dnotool</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
-    <annotate key="org.freedesktop.policykit.exec.env_keep">DISPLAY XAUTHORITY XDG_RUNTIME_DIR HOME XDG_CONFIG_HOME QT_QPA_PLATFORMTHEME KDE_SESSION_VERSION</annotate>
+    <annotate key="org.freedesktop.policykit.exec.env_keep">DISPLAY XAUTHORITY XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_DIRS XDG_CACHE_HOME HOME PATH DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORMTHEME KDE_SESSION_VERSION KDE_FULL_SESSION</annotate>
   </action>
 
 </policyconfig>

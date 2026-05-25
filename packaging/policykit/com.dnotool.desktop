@@ -1,13 +1,13 @@
 [Desktop Entry]
-Version=0.3.6
+Version=1.0
 Type=Application
-Name=DNOTool
-Name[ru]=DNOTool
+Name=dno-tool
 Comment=Network device management tool
 Comment[ru]=Инструмент управления сетевыми устройствами
-Exec=/usr/local/bin/dnotool
+Exec=dnotool-admin
 Icon=dnotool
 Terminal=false
 Categories=System;Network;Settings;
 Keywords=network;ssh;sftp;ping;
 StartupNotify=true
+X-PolicyKit-Action-Id=com.dnotool.run-admin

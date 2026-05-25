@@ -21,11 +21,9 @@
 bash <(curl -sL https://raw.githubusercontent.com/xp9k/dno-tool/main/scripts/install.sh)
 ```
 
-### Windows (PowerShell от имени администратора)
+### Windows
 
-```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/xp9k/dno-tool/main/scripts/install.ps1" -OutFile install.ps1; .\install.ps1; Remove-Item install.ps1
-```
+Скачайте архив с последнего релиза, распакуйте и запустите `dnotool.exe`.
 
 ### Удаление
 

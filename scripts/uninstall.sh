@@ -9,11 +9,11 @@ fi
 
 echo "=== Удаление dnotool ==="
 
-rm -f /usr/local/bin/dnotool
+rm -f /usr/bin/dnotool
 rm -f /usr/bin/dnotool-admin
-rm -f /usr/local/bin/dnotool-uninstall.sh
 rm -f /usr/share/polkit-1/actions/com.dnotool.policy
-rm -f /usr/share/applications/com.dnotool.pkexec.desktop
+rm -f /usr/share/applications/com.dnotool.desktop
+rm -f /usr/bin/dnotool-uninstall.sh
 update-desktop-database /usr/share/applications/ 2>/dev/null || true
 
 echo "=== dnotool удалён! ==="

@@ -1,5 +1,5 @@
 ﻿# install.ps1 — загрузчик dnotool для Windows
-# Скачивает архив последнего релиза в папку "Загрузки"
+# Скачивает exe-архив с commands.json и распаковывает в папку "Загрузки\dnotool"
 
 $Repo = "xp9k/dno-tool"
 $BinaryName = "dnotool"
@@ -12,55 +12,47 @@ $Headers = @{
     "User-Agent" = "dnotool-updater"
 }
 
-$ApiUrl = "https://api.github.com/repos/$Repo/releases/latest"
-try {
-    $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -ErrorAction Stop
-} catch {
-    Write-Host "Ошибка: не удалось получить информацию о релизе: $_" -ForegroundColor Red
-    exit 1
-}
-
-$LatestTag = $Release.tag_name
-$LatestVersion = $LatestTag.TrimStart("v")
-
-if ($LatestVersion -eq "latest" -or $LatestVersion -notmatch '^\d+\.\d+\.\d+$') {
-    $AllReleases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $Headers
-    $VersionReleases = $AllReleases | Where-Object { $_.tag_name -match '^v\d+\.\d+\.\d+$' }
-    $Sorted = $VersionReleases | Sort-Object { [version]($_.tag_name.TrimStart('v')) }
-    $LatestRelease = $Sorted[-1]
-    $LatestVersion = $LatestRelease.tag_name.TrimStart('v')
-    $Release = $LatestRelease
-}
+$AllReleases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $Headers
+$VersionReleases = $AllReleases | Where-Object { $_.tag_name -match '^v\d+\.\d+\.\d+$' }
+$Sorted = $VersionReleases | Sort-Object { [version]($_.tag_name.TrimStart('v')) }
+$Release = $Sorted[-1]
+$LatestVersion = $Release.tag_name.TrimStart("v")
 
 Write-Host "Последняя версия: $LatestVersion"
 
-$ArchiveName = "$BinaryName-$LatestVersion-windows.zip"
-$Asset = $Release.assets | Where-Object { $_.name -eq $ArchiveName } | Select-Object -First 1
+$DownloadsDir = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
 
-if (-not $Asset) {
-    Write-Host "Ошибка: архив $ArchiveName не найден в ресурсах релиза." -ForegroundColor Red
+$WinArchive = "$BinaryName-$LatestVersion-windows.zip"
+$WinAsset = $Release.assets | Where-Object { $_.name -eq $WinArchive } | Select-Object -First 1
+
+if (-not $WinAsset) {
+    Write-Host "Ошибка: архив $WinArchive не найден в ресурсах релиза." -ForegroundColor Red
     exit 1
 }
 
-$DownloadUrl = $Asset.url
-$DownloadsDir = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
-$DestPath = Join-Path $DownloadsDir $ArchiveName
+$WinDestPath = Join-Path $DownloadsDir $WinArchive
 
-Write-Host "Загрузка $ArchiveName в папку $DownloadsDir..."
+Write-Host "Загрузка $WinArchive в папку $DownloadsDir..."
 
 try {
-    Invoke-WebRequest -Uri $DownloadUrl -Headers @{
+    Invoke-WebRequest -Uri $WinAsset.url -Headers @{
         "Accept" = "application/octet-stream"
         "User-Agent" = "dnotool-updater"
-    } -OutFile $DestPath
+    } -OutFile $WinDestPath
 } catch {
     Write-Host "Ошибка: загрузка не удалась: $_" -ForegroundColor Red
     exit 1
 }
 
+$ExtractDir = Join-Path $DownloadsDir "dnotool"
+if (Test-Path $ExtractDir) { Remove-Item -Recurse -Force $ExtractDir }
+
+Write-Host "Распаковка $WinArchive..."
+Expand-Archive -Path $WinDestPath -DestinationPath $ExtractDir -Force
+
 Write-Host ""
 Write-Host "=== Загрузка завершена! ===" -ForegroundColor Green
-Write-Host "Файл сохранён: $DestPath"
-Write-Host "Распакуйте архив и запустите dnotool.exe" -ForegroundColor Yellow
+Write-Host "Файлы распакованы в: $ExtractDir"
+Write-Host "Запустите dnotool.exe" -ForegroundColor Yellow
 
-Start-Process "explorer.exe" $DownloadsDir
+Start-Process "explorer.exe" $ExtractDir

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# install.sh — скачать архив dnotool с GitHub, распаковать и запустить установку
+# install.sh — скачать dnotool с GitHub и установить
 # Запуск: bash <(curl -sL https://raw.githubusercontent.com/xp9k/dno-tool/main/scripts/install.sh)
 
 set -euo pipefail
 
 REPO="xp9k/dno-tool"
-BINARY_NAME="dnotool"
 
 echo "=== Установка dnotool ==="
 
@@ -30,17 +29,22 @@ if not versions:
     sys.exit(1)
 versions.sort(key=lambda x:[int(p) for p in x[0][1:].split('.')])
 tag,rel=versions[-1]
-mos_asset=None
+rpm_asset=None
+commands_asset=None
 for a in rel['assets']:
-    if a['name'].endswith('-mos.zip'):
-        mos_asset=a
-        break
-if not mos_asset:
-    print('ERROR:no_mos_asset',file=sys.stderr)
+    if a['name'].endswith('.rpm') and rpm_asset is None:
+        rpm_asset=a
+    if 'commands' in a['name'] and a['name'].endswith('.zip') and commands_asset is None:
+        commands_asset=a
+if not rpm_asset:
+    print('ERROR:no_rpm_asset',file=sys.stderr)
     sys.exit(1)
 print(f'{tag[1:]}')
-print(f'{mos_asset[\"id\"]}')
-print(f'{mos_asset[\"name\"]}')
+print(f'{rpm_asset[\"id\"]}')
+print(f'{rpm_asset[\"name\"]}')
+if commands_asset:
+    print(f'{commands_asset[\"id\"]}')
+    print(f'{commands_asset[\"name\"]}')
 " "${TMPDIR}/releases.json")
 
 if [ $? -ne 0 ]; then
@@ -49,23 +53,40 @@ if [ $? -ne 0 ]; then
 fi
 
 LATEST_VERSION=$(echo "${parse_json}" | sed -n '1p')
-ASSET_ID=$(echo "${parse_json}" | sed -n '2p')
-ARCHIVE_NAME=$(echo "${parse_json}" | sed -n '3p')
+RPM_ASSET_ID=$(echo "${parse_json}" | sed -n '2p')
+RPM_NAME=$(echo "${parse_json}" | sed -n '3p')
+COMMANDS_LINE4=$(echo "${parse_json}" | sed -n '4p')
+COMMANDS_LINE5=$(echo "${parse_json}" | sed -n '5p')
 
 echo "Последняя версия: ${LATEST_VERSION}"
 
-echo "Загрузка ${ARCHIVE_NAME}..."
-curl -fL --progress-bar -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${ARCHIVE_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
+echo "Загрузка ${RPM_NAME}..."
+curl -fL --progress-bar -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${RPM_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${RPM_ASSET_ID}"
 
-echo "Распаковка..."
-unzip -o "${TMPDIR}/${ARCHIVE_NAME}" -d "${TMPDIR}/extracted" >/dev/null
-
-cd "${TMPDIR}/extracted"
-
-chmod +x dnotool install.sh uninstall.sh 2>/dev/null || true
-if [ -d policykit ]; then
-    chmod +x policykit/dnotool-admin 2>/dev/null || true
+if [ -n "${COMMANDS_LINE4}" ] && [ -n "${COMMANDS_LINE5}" ]; then
+    COMMANDS_ASSET_ID="${COMMANDS_LINE4}"
+    COMMANDS_NAME="${COMMANDS_LINE5}"
+    echo "Загрузка ${COMMANDS_NAME}..."
+    curl -fL --progress-bar -H "Accept: application/octet-stream" -H "User-Agent: dnotool-updater" -o "${TMPDIR}/${COMMANDS_NAME}" "https://api.github.com/repos/${REPO}/releases/assets/${COMMANDS_ASSET_ID}"
 fi
 
-echo "Запуск установки..."
-bash install.sh
+echo "Установка RPM-пакета..."
+sudo dnf install -y "${TMPDIR}/${RPM_NAME}"
+
+echo "Установка commands.json..."
+CONFIG_DIR="${HOME}/.dnotool"
+mkdir -p "${CONFIG_DIR}"
+if [ -n "${COMMANDS_LINE4}" ] && [ -f "${TMPDIR}/${COMMANDS_NAME}" ]; then
+    cd "${TMPDIR}"
+    unzip -o "${COMMANDS_NAME}" -d "${TMPDIR}/commands_extract" >/dev/null 2>&1 || true
+    if [ ! -f "${CONFIG_DIR}/commands.json" ]; then
+        cp "${TMPDIR}/commands_extract/commands.json" "${CONFIG_DIR}/commands.json" 2>/dev/null || true
+        echo "  Установлен в ${CONFIG_DIR}/"
+    else
+        echo "  Уже существует, сохранён текущий."
+    fi
+fi
+
+echo ""
+echo "=== Установка завершена! ==="
+echo "Запуск из меню: dno-tool"
