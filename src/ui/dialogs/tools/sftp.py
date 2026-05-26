@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QSortFilterProxyModel, Slot
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QCloseEvent
 
-from src.config import config, ICONS, DEFAULT_SSH_PRIVATE_KEY_PATH
+from src.config import config, ICONS
 from src.logger import logger
 from src.domain.models.device import DeviceModel
 from src.ui.dialogs.editors.remote_file_info import RemoteFileInfoDialog

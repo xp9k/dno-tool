@@ -10,7 +10,7 @@ from src.ui.widgets.device_tree import DeviceTreeView, CustomTreeItem
 import os
 import base64
 import struct
-from src.config import *
+from src.config import config, ICONS
 from src.logger import logger
 from src.domain.models.device import DeviceModel
 from typing import List
@@ -25,7 +25,6 @@ class SSHManageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Управление SSH ключами")
         self.resize(800, 500)
-        self.public_key_path = DEFAULT_SSH_PUBLIC_KEY_PATH if os.path.exists(DEFAULT_SSH_PUBLIC_KEY_PATH) else os.path.join(os.path.expanduser('~'), '.ssh', 'id_ed25519.pub')
         self._init_ui(tree_data)
 
         self.installation = False
@@ -376,19 +375,18 @@ class SSHManageDialog(QDialog):
         self.log_text.clear()
         self.installTable.setRowCount(0)
         
-        pubkey_path = self.public_key_path
-        privkey_path = pubkey_path.replace('.pub', '')
+        pubkey_path = self.pubkey_path
+        privkey_path = self.privkey_path
         pubkey_exists = os.path.exists(pubkey_path)
         privkey_exists = os.path.exists(privkey_path)
 
-        key_info = f"Публичный ключ: {'<b>есть</b>' if pubkey_exists else '<b>нет</b>'} ({pubkey_path}), "                               
-        logger.info(f"Публичный ключ: {'есть' if pubkey_exists else 'нет'} ({pubkey_path}), ")
-        key_info = f"Приватный ключ: {'<b>есть</b>' if privkey_exists else '<b>нет</b>'} ({privkey_path})"
+        logger.info(f"Публичный ключ: {'есть' if pubkey_exists else 'нет'} ({pubkey_path})")
         logger.info(f"Приватный ключ: {'есть' if privkey_exists else 'нет'} ({privkey_path})")
 
         if pubkey_exists and privkey_exists:
             if not self.check_key_pair_match(privkey_path, pubkey_path):
                 logger.info("Публичный и приватный ключи не совпадают! Установите корректную пару.")
+                QMessageBox.warning(self, "SSH ключ", "Публичный и приватный ключи не совпадают!\nСгенерируйте корректную пару ключей.")
                 return
 
         key_to_install = pubkey_path
@@ -409,6 +407,7 @@ class SSHManageDialog(QDialog):
                         return
             else:
                 logger.info("Не нашел ни публичного, ни приватного ключа")
+                QMessageBox.warning(self, "SSH ключ", "Не найден ни публичный, ни приватный ключ.\nСначала сгенерируйте ключи.")
                 return
 
         self.install_btn.setVisible(False)

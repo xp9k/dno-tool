@@ -74,9 +74,6 @@ def get_default_key_path() -> str:
     return os.path.join(_SSH_DIR, "id_ed25519")
 
 
-PRIVATE_KEY_PATH = get_default_key_path()
-
-
 def _is_set(value: Optional[str]) -> bool:
     """Проверяет что значение установлено (не None и не пустая строка)"""
     return value is not None and value.strip() != ""
@@ -111,7 +108,7 @@ def get_credentials(
         CredentialsResult с username, password и private_key
     """
     if key_path is None:
-        key_path = PRIVATE_KEY_PATH
+        key_path = get_default_key_path()
 
     # Приоритет 1 -> 2: имя пользователя (хост -> глобальные -> 'root')
     username = (

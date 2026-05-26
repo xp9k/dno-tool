@@ -1,5 +1,5 @@
 Name:           dnotool
-Version:        0.5.7
+Version:        0.5.9
 Release:        1%{?dist}
 Summary:        Network device management tool for MOS/ALT Linux
 Group:          System/Configuration/Other

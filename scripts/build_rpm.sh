@@ -157,6 +157,7 @@ fi
 # ── 6. Собираем RPM ──────────────────────────────────────────────────────
 echo "--- Шаг 6: Сборка RPM-пакета ---"
 mkdir -p "${RPMBUILD}"/{BUILD,RPMS,SRPMS}
+rm -f "${RPMBUILD}"/RPMS/x86_64/dnotool-*.rpm
 
 # Копируем rpmlintrc чтобы rpmlint не валил на предсобранный бинарник
 if [ -f "${PACKAGING_DIR}/rpm/dnotool.rpmlintrc" ]; then
@@ -167,7 +168,7 @@ rpmbuild -bb "${RPMBUILD}/SPECS/dnotool.spec" \
     --define "_topdir ${RPMBUILD}" \
     --define "_unpackaged_files_terminate_build 0"
 
-RPM_FILE=$(find "${RPMBUILD}/RPMS" -name "dnotool-*.rpm" -type f 2>/dev/null | head -1)
+RPM_FILE=$(find "${RPMBUILD}/RPMS" -name "dnotool-${VERSION}-*.rpm" -type f 2>/dev/null | head -1)
 if [ -z "${RPM_FILE}" ]; then
     echo "Ошибка: RPM-пакет не найден после сборки!"
     ls -laR "${RPMBUILD}/RPMS/"
