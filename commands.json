@@ -2453,7 +2453,7 @@
                     {
                         "commands": [
                             {
-                                "text": "D:/coding/python/pyktool/dist/veyon/1793_public_key.pem::%login%@%hostname%:./%param1%_public_key.pem",
+                                "text": "./%param1%_public_key.pem::%login%@%hostname%:./%param1%_public_key.pem",
                                 "type": "sftp"
                             },
                             {
