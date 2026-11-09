@@ -3,14 +3,14 @@
 KRFB - штатный KDE RFB-сервер (security type 2, VNC Auth), альтернатива
 x11vnc/Veyon. Сервис предоставляет:
 - FEATURE_MAP (krfb_restart, krfb_password) - для GUI, веб и нод;
-- change_password(host, password) - смена пароля через SSH (kwriteconfig5
-  + рестарт user unit / процесса krfb);
-- restart_service(host) - перезапуск krfb на хосте;
-- те же change_password/restart_service для kmsvnc: если на хосте включена
-  служба kmsvnc, пароль пишется в /etc/kmsvnc/passwd и служба
-  перезапускается (мастер ставит её и вместо x11vnc на хостах с Wayland);
-- detect_server(host, ssh) - определение, какой VNC-сервер установлен
-  на хосте (для диагностики);
+- change_password(host, password) / restart_service(host) - смена пароля
+  и перезапуск VNC-сервера хоста. Сервер определяется по SSH
+  (``_host_server``): включённая служба kmsvnc, затем x11vnc, затем KRFB
+  (служба мастера krfb-dno или запущенный процесс krfb). kmsvnc и x11vnc -
+  файл /etc/<сервер>/passwd в формате сервера и перезапуск системной
+  службы; KRFB - kwriteconfig6/kwriteconfig5 + рестарт user unit /
+  процесса krfb. Если на хосте нет ни одного из них, операция отказывает,
+  а не запускает KRFB;
 - open_viewer(device, mode, viewer) - открыть вьювер: Windows - браузер
   (vnc.html?backend=krfb); Linux - на выбор krdc или браузер (default:
   krdc, если установлен, иначе браузер).
@@ -35,6 +35,26 @@ from src.logger import logger
 # каждый символ заменяется на chr(0x1001F - ord(c)). Инволюция: дважды
 # применённая obscure возвращает исходный пароль.
 OBSCURE_BASE = 0x1001F
+
+
+def local_kconfig_tool(name: str) -> Optional[str]:
+    """Путь к утилите KConfig на этой машине: версия KF6, иначе KF5.
+
+    ``name`` - ``kwriteconfig`` или ``kreadconfig``. В Plasma 6 пакета KF5
+    может не быть, формат krfbrc у обеих версий одинаковый.
+    """
+    import shutil
+
+    return shutil.which(f"{name}6") or shutil.which(f"{name}5")
+
+
+# То же на хосте: shell-переменные KW/KR с путями к утилитам KConfig.
+_KCONFIG_VARS = (
+    "KW=$(command -v kwriteconfig6 || command -v kwriteconfig5) "
+    "|| { echo 'kwriteconfig not found'; exit 4; }; "
+    "KR=$(command -v kreadconfig6 || command -v kreadconfig5) "
+    "|| { echo 'kreadconfig not found'; exit 4; }; "
+)
 
 
 def kstring_obscure(text: str) -> str:
@@ -171,10 +191,8 @@ class KRFBService(BaseService):
 
     @staticmethod
     def local_password_supported() -> bool:
-        """True, если на машине оператора есть krfb (kwriteconfig5)."""
-        import shutil
-
-        return shutil.which("kwriteconfig5") is not None
+        """True, если на машине оператора есть krfb (kwriteconfig6/5)."""
+        return local_kconfig_tool("kwriteconfig") is not None
 
     @staticmethod
     def apply_password_local(password: str) -> Tuple[bool, str]:
@@ -191,7 +209,6 @@ class KRFBService(BaseService):
             (ok, message) - message для лога установки.
         """
         import os
-        import shutil
         import subprocess
         import sys
 
@@ -200,7 +217,7 @@ class KRFBService(BaseService):
         if sys.platform == "win32":
             # На Windows krfb не запускается - пароль локально не нужен.
             return (True, "Windows - локальный krfb не используется (пропущено)")
-        kw = shutil.which("kwriteconfig5")
+        kw = local_kconfig_tool("kwriteconfig")
         if not kw:
             return (True, "на этой машине krfb не установлен (пропущено)")
 
@@ -221,7 +238,7 @@ class KRFBService(BaseService):
         )
         obscured_dummy = kstring_obscure(dummy)
         # Чистое окружение: frozen-бинарь (PyInstaller) экспортирует
-        # LD_LIBRARY_PATH во временный каталог - системный kwriteconfig5
+        # LD_LIBRARY_PATH во временный каталог - системный kwriteconfig
         # (Qt5/libicu) подтягивает бандловскую libstdc++ и падает
         # (CXXABI_1.3.15 not found). На Windows build_clean_env() вернёт
         # None (env не фильтруется).
@@ -258,7 +275,7 @@ class KRFBService(BaseService):
                 if r.returncode != 0:
                     return (
                         False,
-                        f"kwriteconfig5 ({key}) failed: "
+                        f"kwriteconfig ({key}) failed: "
                         f"{r.stderr.decode(errors='replace').strip()}",
                     )
             r = subprocess.run(
@@ -281,7 +298,7 @@ class KRFBService(BaseService):
                 env=env,
             )
             if r.returncode != 0:
-                return (False, "kwriteconfig5 (allowUnattendedAccess) failed")
+                return (False, "kwriteconfig (allowUnattendedAccess) failed")
             # Окно "Совместный доступ" не должно восстанавливаться из
             # KDE-сессии: --nodialog это не подавляет, нужен startMinimized.
             r = subprocess.run(
@@ -304,13 +321,13 @@ class KRFBService(BaseService):
                 env=env,
             )
             if r.returncode != 0:
-                return (False, "kwriteconfig5 (startMinimized) failed")
+                return (False, "kwriteconfig (startMinimized) failed")
         except Exception as e:
-            return (False, f"kwriteconfig5 failed: {e}")
+            return (False, f"kwriteconfig failed: {e}")
 
-        # Verify: kreadconfig5 unattendedPassword + обратная obscure =
+        # Verify: kreadconfig unattendedPassword + обратная obscure =
         # исходный пароль (в desktopPassword теперь dummy).
-        kr = shutil.which("kreadconfig5")
+        kr = local_kconfig_tool("kreadconfig")
         if kr:
             try:
                 r = subprocess.run(
@@ -425,9 +442,11 @@ class KRFBService(BaseService):
         return self._exec_ssh(host, full, timeout=timeout, device=device)
 
     def change_password(self, host: str, password: str, device=None) -> bool:
-        """Сменить пароль krfb на удалённом хосте.
+        """Сменить пароль VNC-сервера на удалённом хосте.
 
-        Настоящий пароль пишется в krfbrc [Security] unattendedPassword
+        kmsvnc и x11vnc - файл пароля и перезапуск службы (см.
+        ``_host_server``). KRFB: настоящий пароль пишется в krfbrc
+        [Security] unattendedPassword
         (тихий доступ без подтверждения - наш рабочий путь), в
         desktopPassword - случайный dummy: окно KRFB показывает ЭТОТ пароль
         открытым текстом. Затем перезапуск krfb (user unit или pkill -
@@ -447,10 +466,15 @@ class KRFBService(BaseService):
             self._last_error = "Не указан хост"
             return False
         if not password:
-            self._last_error = "Пустой пароль недопустим для krfb и kmsvnc"
+            self._last_error = "Пустой пароль VNC недопустим"
             return False
-        if self._uses_kmsvnc(host, device):
+        server = self._host_server(host, device)
+        if server is None:
+            return False
+        if server == "kmsvnc":
             return self._change_kmsvnc_password(host, password, device)
+        if server == "x11vnc":
+            return self._change_x11vnc_password(host, password, device)
 
         obscured = kstring_obscure(password)
         # desktopPassword показывается окном KRFB открытым текстом: туда
@@ -479,12 +503,12 @@ class KRFBService(BaseService):
         script = (
             "RC=$HOME/.config/krfbrc; "
             "mkdir -p $HOME/.config; "
-            f"command -v kwriteconfig5 >/dev/null || {{ echo 'kwriteconfig5 not found'; exit 4; }}; "
-            f"kwriteconfig5 --file $RC --group {KRFB_GROUP_SECURITY} --key desktopPassword '{esc_dummy}' || exit 4; "
-            f"kwriteconfig5 --file $RC --group {KRFB_GROUP_SECURITY} --key unattendedPassword '{esc}' || exit 4; "
-            f"kwriteconfig5 --file $RC --group {KRFB_GROUP_SECURITY} --key allowUnattendedAccess true --type bool; "
-            f"kwriteconfig5 --file $RC --group {KRFB_GROUP_MAINWINDOW} --key {KRFB_KEY_START_MINIMIZED} true --type bool || exit 4; "
-            "RB=$(kreadconfig5 --file $RC --group "
+            + _KCONFIG_VARS
+            + f'"$KW" --file $RC --group {KRFB_GROUP_SECURITY} --key desktopPassword \'{esc_dummy}\' || exit 4; '
+            f'"$KW" --file $RC --group {KRFB_GROUP_SECURITY} --key unattendedPassword \'{esc}\' || exit 4; '
+            f'"$KW" --file $RC --group {KRFB_GROUP_SECURITY} --key allowUnattendedAccess true --type bool; '
+            f'"$KW" --file $RC --group {KRFB_GROUP_MAINWINDOW} --key {KRFB_KEY_START_MINIMIZED} true --type bool || exit 4; '
+            'RB=$("$KR" --file $RC --group '
             + KRFB_GROUP_SECURITY
             + " --key unattendedPassword | tr -d '\\n\\r'); "
             'DEC=$(printf \'%s\' "$RB" | python3 -c "' + verify_py + '"); '
@@ -503,9 +527,31 @@ class KRFBService(BaseService):
         self._logger.info(f"KRFBService: password changed on {host}")
 
         # Рестарт krfb для применения пароля
-        return self.restart_service(host, device=device)
+        return self._restart_krfb(host, device)
 
     def restart_service(self, host: str, device=None) -> bool:
+        """Перезапустить VNC-сервер хоста (kmsvnc, x11vnc или KRFB).
+
+        Args:
+            host: адрес хоста.
+            device: DeviceModel (необязателен; без него резолв по host).
+
+        Returns:
+            True при успехе.
+        """
+        self._last_error = ""
+        self._last_error_detail = ""
+        if not host:
+            self._last_error = "Не указан хост"
+            return False
+        server = self._host_server(host, device)
+        if server is None:
+            return False
+        if server in ("kmsvnc", "x11vnc"):
+            return self._restart_system_server(host, server, device)
+        return self._restart_krfb(host, device)
+
+    def _restart_krfb(self, host: str, device=None) -> bool:
         """Перезапустить krfb на хосте.
 
         Приоритет: systemd user unit krfb-dno (если есть) -> pkill krfb
@@ -527,14 +573,6 @@ class KRFBService(BaseService):
         Returns:
             True при успехе.
         """
-        self._last_error = ""
-        self._last_error_detail = ""
-        if not host:
-            self._last_error = "Не указан хост"
-            return False
-        if self._uses_kmsvnc(host, device):
-            return self._restart_kmsvnc(host, device)
-
         script = (
             "XU=$(loginctl list-sessions --no-legend 2>/dev/null "
             "| awk '$4==\"seat0\" {print $3; exit}'); "
@@ -549,7 +587,8 @@ class KRFBService(BaseService):
             # Через bash -c: $HOME должен раскрыться УЖЕ в контексте
             # X-пользователя (ASU выставляет HOME), а не в outer-shell.
             'if [ -n "$XU" ]; then '
-            "ucmd bash -c 'kwriteconfig5 --file $HOME/.config/krfbrc --group "
+            "ucmd bash -c 'K=$(command -v kwriteconfig6 || command -v kwriteconfig5) "
+            '&& "$K" --file $HOME/.config/krfbrc --group '
             + KRFB_GROUP_MAINWINDOW
             + " --key "
             + KRFB_KEY_START_MINIMIZED
@@ -624,20 +663,58 @@ class KRFBService(BaseService):
                 pass
         return True
 
-    # ========== kmsvnc ==========
-    # kmsvnc - системная служба (пакет из assets/remote), пароль в
-    # /etc/kmsvnc/passwd. Мастер ставит её и вместо x11vnc на хостах с
-    # Wayland, поэтому служба определяется на хосте, а не по настройке.
+    # ========== Какой сервер на хосте ==========
+    # Сервер определяется на хосте, а не по настройке мастера: настройка
+    # могла смениться после установки, а хосты ставились в разное время.
 
-    def _uses_kmsvnc(self, host: str, device=None) -> bool:
-        """True, если на хосте включена служба kmsvnc."""
-        out, ok = self._exec_ssh(
-            host,
-            "systemctl is-enabled kmsvnc.service 2>/dev/null; true",
-            timeout=15,
-            device=device,
+    def _host_server(self, host: str, device=None) -> Optional[str]:
+        """VNC-сервер хоста: ``kmsvnc``, ``x11vnc`` или ``krfb``.
+
+        Порядок: включённая служба kmsvnc, затем x11vnc (обе ставит мастер,
+        одновременно включённой бывает только одна), затем KRFB - служба
+        мастера krfb-dno включена или процесс krfb запущен. Пакет KRFB есть в
+        МОС по умолчанию, поэтому сам бинарник признаком не считается.
+        None - сервер не найден или проверка не удалась, причина в
+        ``_last_error``.
+        """
+        script = (
+            "for s in kmsvnc x11vnc; do "
+            'echo "SYS $s $(systemctl is-enabled $s.service 2>/dev/null)"; done; '
+            'echo "KRFB $(systemctl --global is-enabled krfb-dno.service 2>/dev/null)"; '
+            "ls /home/*/.config/systemd/user/*.wants/krfb-dno.service "
+            ">/dev/null 2>&1 && echo 'KRFB enabled'; "
+            "pgrep -x krfb >/dev/null 2>&1 && echo 'KRFB running'; "
+            "echo DETECT_OK"
         )
-        return ok and "enabled" in (out or "").split()
+        out, ok = self._exec_ssh(
+            host, "sh -c " + _shell_quote(script), timeout=15, device=device
+        )
+        if not ok or not _has_line(out, "DETECT_OK"):
+            self._last_error = "Не удалось определить VNC-сервер на хосте"
+            self._last_error_detail = out or ""
+            return None
+        found = set()
+        for line in (out or "").splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == "SYS" and parts[2] == "enabled":
+                found.add(parts[1])
+            elif len(parts) >= 2 and parts[0] == "KRFB" and parts[1] in (
+                "enabled",
+                "running",
+            ):
+                found.add("krfb")
+        for server in ("kmsvnc", "x11vnc", "krfb"):
+            if server in found:
+                return server
+        self._last_error = (
+            "На хосте не найдена служба VNC (kmsvnc, x11vnc или KRFB): "
+            "установите VNC мастером настройки"
+        )
+        return None
+
+    # ========== kmsvnc и x11vnc ==========
+    # Системные службы мастера: пароль в /etc/<сервер>/passwd, после смены
+    # служба перезапускается (пароль читается при запуске).
 
     def _change_kmsvnc_password(self, host: str, password: str, device=None) -> bool:
         """Записать пароль kmsvnc и перезапустить службу."""
@@ -655,66 +732,54 @@ class KRFBService(BaseService):
             self._logger.warning(f"KRFBService: kmsvnc password failed for {host}")
             return False
         self._logger.info(f"KRFBService: kmsvnc password changed on {host}")
-        return self._restart_kmsvnc(host, device)
+        return self._restart_system_server(host, "kmsvnc", device)
 
-    def _restart_kmsvnc(self, host: str, device=None) -> bool:
-        """Перезапустить службу kmsvnc и дождаться её запуска."""
+    def _change_x11vnc_password(self, host: str, password: str, device=None) -> bool:
+        """Записать пароль x11vnc (формат ``-storepasswd``) и перезапустить службу.
+
+        Файл тот же, что пишет мастер: скрипт запуска передаёт его x11vnc
+        через ``-rfbauth``. Классический VNC Auth учитывает первые 8 байтов.
+        """
+        import base64
+
+        from src.utils.security.vnc_password import encode_vnc_password_file
+
+        encoded = base64.b64encode(encode_vnc_password_file(password)).decode("ascii")
+        script = (
+            "umask 077; install -d -m 700 /etc/x11vnc && "
+            f"printf '%s' {encoded} | base64 -d > /etc/x11vnc/passwd && "
+            "chmod 600 /etc/x11vnc/passwd && test -s /etc/x11vnc/passwd && "
+            "echo PASSWORD_OK"
+        )
+        out, ok = self._exec_ssh(
+            host, "sh -c " + _shell_quote(script), timeout=30, device=device
+        )
+        if not ok or not _has_line(out, "PASSWORD_OK"):
+            self._last_error = "Смена пароля x11vnc не удалась"
+            self._last_error_detail = out or ""
+            self._logger.warning(f"KRFBService: x11vnc password failed for {host}")
+            return False
+        self._logger.info(f"KRFBService: x11vnc password changed on {host}")
+        return self._restart_system_server(host, "x11vnc", device)
+
+    def _restart_system_server(self, host: str, name: str, device=None) -> bool:
+        """Перезапустить службу kmsvnc или x11vnc и дождаться её запуска."""
         out, ok = self._exec_ssh(
             host,
             "sh -c "
             + _shell_quote(
-                "systemctl restart kmsvnc.service && sleep 2 && "
-                "systemctl is-active kmsvnc.service"
+                f"systemctl restart {name}.service && sleep 2 && "
+                f"systemctl is-active {name}.service"
             ),
             timeout=30,
             device=device,
         )
         if not ok or "active" not in (out or "").split():
-            self._last_error = "kmsvnc не запущен после перезапуска"
+            self._last_error = f"{name} не запущен после перезапуска"
             self._last_error_detail = out or ""
             return False
-        self._logger.info(f"KRFBService: kmsvnc restarted on {host}")
+        self._logger.info(f"KRFBService: {name} restarted on {host}")
         return True
-
-    def detect_server(self, host: str, device=None) -> str:
-        """Определить, какой VNC-сервер установлен/запущен на хосте.
-
-        Проверяет по SSH: x11vnc (пакет/юнит/процесс) и krfb (бинарник/
-        конфиг/процесс). Используется диагностикой и автоопределением.
-
-        Args:
-            host: адрес хоста.
-            device: DeviceModel (необязателен; без него резолв по host).
-
-        Returns:
-            "x11vnc" | "krfb" | "both" | "none".
-        """
-        if not host:
-            return "none"
-        script = (
-            "X11VNC=0; KRFBI=0; "
-            "command -v x11vnc >/dev/null && X11VNC=1; "
-            "systemctl is-active x11vnc >/dev/null 2>&1 && X11VNC=1; "
-            "command -v krfb >/dev/null && KRFBI=1; "
-            "pgrep -x krfb >/dev/null 2>&1 && KRFBI=1; "
-            "echo RESULT:$X11VNC:$KRFBI"
-        )
-        out, ok = self._exec_ssh(host, script, timeout=15, device=device)
-        if not ok or "RESULT:" not in (out or ""):
-            return "none"
-        try:
-            part = (out or "").split("RESULT:")[-1].strip()
-            a, b = part.split(":")[:2]
-            x11, krfb = bool(int(a)), bool(int(b))
-        except Exception:
-            return "none"
-        if x11 and krfb:
-            return "both"
-        if x11:
-            return "x11vnc"
-        if krfb:
-            return "krfb"
-        return "none"
 
     # ========== Открытие вьювера ==========
 
@@ -875,6 +940,11 @@ def _find_krdc() -> Optional[str]:
     import shutil
 
     return shutil.which("krdc")
+
+
+def _has_line(output: Optional[str], marker: str) -> bool:
+    """Есть ли в выводе строка, целиком равная ``marker`` (без эха команды)."""
+    return any(line.strip() == marker for line in (output or "").splitlines())
 
 
 def _shell_quote(s: str) -> str:

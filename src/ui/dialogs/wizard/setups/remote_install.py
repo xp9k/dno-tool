@@ -454,11 +454,13 @@ class RemoteInstallPage(SetupPage):
 
         local_packages = []
         if services.get("vnc") and ctx.vnc_server == "krfb" and sys.platform != "win32":
-            local_packages = [
-                name
-                for name, executable in (("krdc", "krdc"), ("krfb", "kwriteconfig5"))
-                if shutil.which(executable) is None
-            ]
+            from src.services.remote.krfb_service import local_kconfig_tool
+
+            local_packages = []
+            if shutil.which("krdc") is None:
+                local_packages.append("krdc")
+            if local_kconfig_tool("kwriteconfig") is None:
+                local_packages.append("krfb")
             if (
                 local_packages
                 and QMessageBox.question(

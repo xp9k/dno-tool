@@ -66,14 +66,16 @@ WantedBy=graphical.target
 _KRFB_CONFIG_SCRIPT = """RC="$HOME/.config/krfbrc"
 mkdir -p "$HOME/.config"
 touch "$RC"
-command -v kwriteconfig5 >/dev/null || {{ echo 'no-kwriteconfig5'; exit 4; }}
-kwriteconfig5 --file "$RC" --group TCP --key port {port} --type int || exit 4
-kwriteconfig5 --file "$RC" --group TCP --key useDefaultPort false --type bool || exit 4
-kwriteconfig5 --file "$RC" --group Security --key noWallet true --type bool || exit 4
-kwriteconfig5 --file "$RC" --group Security --key allowUnattendedAccess true --type bool || exit 4
-kwriteconfig5 --file "$RC" --group Security --key allowDesktopControl true --type bool || exit 4
-kwriteconfig5 --file "$RC" --group MainWindow --key startMinimized true --type bool || exit 4
-[ "$(kreadconfig5 --file "$RC" --group TCP --key port)" = "{port}" ] || exit 4
+# Plasma 6: kwriteconfig6 (пакета KF5 может не быть), формат krfbrc общий.
+KW=$(command -v kwriteconfig6 || command -v kwriteconfig5) || {{ echo 'no-kwriteconfig'; exit 4; }}
+KR=$(command -v kreadconfig6 || command -v kreadconfig5) || {{ echo 'no-kreadconfig'; exit 4; }}
+"$KW" --file "$RC" --group TCP --key port {port} --type int || exit 4
+"$KW" --file "$RC" --group TCP --key useDefaultPort false --type bool || exit 4
+"$KW" --file "$RC" --group Security --key noWallet true --type bool || exit 4
+"$KW" --file "$RC" --group Security --key allowUnattendedAccess true --type bool || exit 4
+"$KW" --file "$RC" --group Security --key allowDesktopControl true --type bool || exit 4
+"$KW" --file "$RC" --group MainWindow --key startMinimized true --type bool || exit 4
+[ "$("$KR" --file "$RC" --group TCP --key port)" = "{port}" ] || exit 4
 PW_REAL=$(python3 - <<'PYEOF'
 pwd = {password_literal}
 import struct
@@ -85,15 +87,15 @@ PYEOF
 ) || exit 4
 if [ -n "$PW_REAL" ]; then
   PW_DUMMY=$(python3 -c "import secrets,string; r=''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(16)); print(''.join(chr(0x1001F-ord(c)) for c in r))") || exit 4
-  kwriteconfig5 --file "$RC" --group Security --key desktopPassword "$PW_DUMMY" || exit 4
-  kwriteconfig5 --file "$RC" --group Security --key unattendedPassword "$PW_REAL" || exit 4
-  PW_READ=$(kreadconfig5 --file "$RC" --group Security --key unattendedPassword) || exit 4
+  "$KW" --file "$RC" --group Security --key desktopPassword "$PW_DUMMY" || exit 4
+  "$KW" --file "$RC" --group Security --key unattendedPassword "$PW_REAL" || exit 4
+  PW_READ=$("$KR" --file "$RC" --group Security --key unattendedPassword) || exit 4
   [ "$PW_READ" = "$PW_REAL" ] || exit 4
   echo "password-set"
 else
-  kwriteconfig5 --file "$RC" --group Security --key desktopPassword --delete || exit 4
-  kwriteconfig5 --file "$RC" --group Security --key unattendedPassword --delete || exit 4
-  kwriteconfig5 --file "$RC" --group Security --key allowUnattendedAccess false --type bool || exit 4
+  "$KW" --file "$RC" --group Security --key desktopPassword --delete || exit 4
+  "$KW" --file "$RC" --group Security --key unattendedPassword --delete || exit 4
+  "$KW" --file "$RC" --group Security --key allowUnattendedAccess false --type bool || exit 4
   echo "no-password-mode"
 fi
 echo CONFIG_OK
@@ -124,7 +126,9 @@ WantedBy=multi-user.target
 """
 
 
-_KRFB_UNIT_TEMPLATE = "[Unit]\nDescription=DNO Tool krfb service\nAfter=graphical-session.target\n\n[Service]\nType=exec\nExecStartPre=-/usr/bin/kwriteconfig5 --file %h/.config/krfbrc --group MainWindow --key startMinimized --type bool true\nExecStart=/usr/bin/krfb --nodialog\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n"
+# ExecStartPre: kwriteconfig6 (Plasma 6) или kwriteconfig5; «$$» — это «$»
+# для shell, systemd иначе подставил бы свою переменную.
+_KRFB_UNIT_TEMPLATE = "[Unit]\nDescription=DNO Tool krfb service\nAfter=graphical-session.target\n\n[Service]\nType=exec\nExecStartPre=-/bin/sh -c 'K=$$(command -v kwriteconfig6 || command -v kwriteconfig5) && \"$$K\" --file %h/.config/krfbrc --group MainWindow --key startMinimized --type bool true'\nExecStart=/usr/bin/krfb --nodialog\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n"
 _KRFB_WAYLAND_UNIT_TEMPLATE = _KRFB_UNIT_TEMPLATE.replace(
     "ExecStart=/usr/bin/krfb --nodialog",
     "ExecStart=/usr/bin/systemd-run --user --unit=app-org.kde.krfb --collect --service-type=exec --wait -- /usr/bin/krfb --nodialog",

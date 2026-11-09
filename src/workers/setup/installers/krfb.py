@@ -32,7 +32,7 @@ class KrfbBackend(VncOperations):
              и per-user: иначе второй процесс через D-Bus Unique будит
              первый и тот показывает окно "Совместный доступ".
           1. Проверка/установка пакета krfb (dnf/apt-get).
-          2. Конфигурация kwriteconfig5 для ВСЕХ пользователей системно:
+          2. Конфигурация kwriteconfig6/kwriteconfig5 для ВСЕХ пользователей системно:
              [TCP] port + useDefaultPort=false,
              [Security] noWallet=true, allowUnattendedAccess=true,
              allowDesktopControl=true, desktopPassword + unattendedPassword
@@ -99,12 +99,15 @@ class KrfbBackend(VncOperations):
                 return
             log("Пакет krfb установлен")
 
-        # Verify: krfb бинарник и kwriteconfig5 (зависимость kf5-kconfig)
-        code, out, err = run_cmd("command -v kwriteconfig5")
+        # Verify: утилита настройки KDE. В Plasma 6 - kwriteconfig6
+        # (kf6-kconfig), пакета KF5 может не быть; формат krfbrc общий.
+        code, out, err = run_cmd(
+            "command -v kwriteconfig6 || command -v kwriteconfig5"
+        )
         if code != 0:
             log(
-                "WARNING: нет утилиты kwriteconfig5 (пакет kf5-kconfig) - "
-                "автоматическая настройка невозможна"
+                "WARNING: нет утилиты kwriteconfig6 или kwriteconfig5 (пакет "
+                "kf6-kconfig или kf5-kconfig) - автоматическая настройка невозможна"
             )
             self.context.log(device.host, svc, "krfb: нет утилиты настройки")
             self._report(device, svc, RESULT_ERROR, "\n".join(output_lines))
@@ -428,31 +431,39 @@ class KrfbBackend(VncOperations):
             self._report(device, svc, RESULT_ABORT, "Прервано")
             return
 
-        self._local_abort.wait(2)
-        # krfb слушает только при активной X-сессии; без неё порт закрыт,
-        # но unit включён - применится после входа пользователя.
-        code, out, err = run_cmd(
-            f"ss -tlnp 2>/dev/null | grep ':{port} ' | grep -w krfb"
-        )
-        if code == 0 and (out or "").strip():
-            log(f"Порт {port} слушается - общий экран krfb готов")
-            self.context.log(device.host, svc, "krfb установлен и готов к работе")
-            self._report(device, svc, RESULT_SUCCESS, "\n".join(output_lines))
-            return
-        code, state, _ = run_cmd(
-            "found=0; for sid in $(loginctl list-sessions --no-legend | awk '{print $1}'); do "
-            'kind=$(loginctl show-session "$sid" -p Type --value); '
-            'case "$kind" in x11|wayland) found=1;; esac; '
-            "done; [ $found -eq 0 ] && echo NO_SESSION || echo HAS_SESSION"
-        )
-        if code == 0 and state.strip() == "NO_SESSION":
-            self._report(
-                device,
-                svc,
-                RESULT_WAITING,
-                "KRFB настроен, ожидает графическую сессию пользователя",
+        # krfb слушает только в графическом сеансе; без него порт закрыт,
+        # но unit включён - применится после входа пользователя. В сеансе
+        # KRFB открывает порт не сразу (под Wayland - через systemd-run и
+        # портал), поэтому порт ждём до 10 с, как у системных серверов.
+        for attempt in range(5):
+            if self._local_abort.wait(2):
+                self._report(device, svc, RESULT_ABORT, "Прервано")
+                return
+            code, out, err = run_cmd(
+                f"ss -tlnp 2>/dev/null | grep ':{port} ' | grep -w krfb"
             )
-        else:
-            self._report(
-                device, svc, RESULT_ERROR, "KRFB не открыл порт при доступной сессии"
+            if code == 0 and (out or "").strip():
+                log(f"Порт {port} слушается - общий экран krfb готов")
+                self.context.log(device.host, svc, "krfb установлен и готов к работе")
+                self._report(device, svc, RESULT_SUCCESS, "\n".join(output_lines))
+                return
+            if attempt:
+                continue
+            code, state, _ = run_cmd(
+                "found=0; for sid in $(loginctl list-sessions --no-legend | awk '{print $1}'); do "
+                'kind=$(loginctl show-session "$sid" -p Type --value); '
+                'case "$kind" in x11|wayland) found=1;; esac; '
+                "done; [ $found -eq 0 ] && echo NO_SESSION || echo HAS_SESSION"
             )
+            if code == 0 and state.strip() == "NO_SESSION":
+                # Ждать порт без сеанса бессмысленно.
+                self._report(
+                    device,
+                    svc,
+                    RESULT_WAITING,
+                    "KRFB настроен, ожидает графическую сессию пользователя",
+                )
+                return
+        self._report(
+            device, svc, RESULT_ERROR, "KRFB не открыл порт при доступной сессии"
+        )

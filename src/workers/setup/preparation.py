@@ -75,7 +75,7 @@ class OperatorPreparationWorker(QThread):
                 from src.services.remote.krfb_service import KRFBService
                 import sys
 
-                if sys.platform != "win32" and shutil.which("kwriteconfig5"):
+                if sys.platform != "win32" and KRFBService.local_password_supported():
                     ok, _ = KRFBService.apply_password_local(plan.vnc_password)
                     if not ok:
                         self.status.emit(

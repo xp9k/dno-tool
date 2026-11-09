@@ -124,7 +124,9 @@ class VncSetupPage(SetupPage):
         missing = []
         if shutil.which("krdc") is None:
             missing.append("krdc")
-        if shutil.which("kwriteconfig5") is None:
+        from src.services.remote.krfb_service import local_kconfig_tool
+
+        if local_kconfig_tool("kwriteconfig") is None:
             missing.append("krfb")
         if not missing:
             return True  # всё уже установлено
