@@ -3,9 +3,11 @@
 Модуль собирает сообщения клиента (ввод, буфер обмена, запросы кадров) и
 разбирает поток сервера на события. Транспортом владеет рабочий поток окна.
 
-Кодирования: Raw, CopyRect, Zlib и псевдокодирования DesktopSize,
-ExtendedDesktopSize (раскладка мониторов), RichCursor, PointerPos, LastRect,
-уровень сжатия и Extended Clipboard (текст UTF-8). Классический обмен текстом
+Кодирования: Raw, CopyRect, Zlib, Tight (заливка, JPEG, палитра, градиент) и
+псевдокодирования DesktopSize, ExtendedDesktopSize (раскладка мониторов),
+RichCursor, PointerPos, LastRect, уровни сжатия и качества JPEG, Extended
+Clipboard (текст UTF-8) и уменьшенный кадр от kmsvnc для «живого» клиента
+(расширение миниатюр версии ≥ 3). Классический обмен текстом
 (ServerCutText/ClientCutText) остаётся для серверов без Extended Clipboard.
 
 Вход: None и классический VNC Auth (первые 8 байт пароля UTF-8). Транспорт не
@@ -21,13 +23,19 @@ import zlib
 from collections.abc import Generator
 from dataclasses import dataclass
 
-from src.services.thumbnails.rfb import vnc_response
+from src.services.thumbnails.rfb import (
+    THUMBNAIL_LIVE_ENCODING,
+    THUMBNAIL_LIVE_VERSION,
+    THUMBNAIL_MESSAGE,
+    vnc_response,
+)
 from src.utils.network.dns_resolver import DnsBusyError, DnsResolver, DnsTimeoutError
 
 # Кодирования прямоугольников.
 ENC_RAW = 0
 ENC_COPYRECT = 1
 ENC_ZLIB = 6
+ENC_TIGHT = 7
 # Псевдокодирования.
 ENC_DESKTOP_SIZE = -223
 ENC_LAST_RECT = -224
@@ -36,6 +44,26 @@ ENC_RICH_CURSOR = -239
 ENC_EXT_DESKTOP_SIZE = -308
 ENC_EXT_CLIPBOARD = -1063131698  # 0xC0A1E5CE как знаковое 32-битное
 ENC_COMPRESS_LEVEL_0 = -256
+ENC_QUALITY_LEVEL_0 = -32
+# «Живой» клиент kmsvnc (не псевдокодировка миниатюр: с ней старый kmsvnc
+# снимал бы окно раз в секунду).
+ENC_SERVER_SCALING = THUMBNAIL_LIVE_ENCODING
+SERVER_SCALING_VERSION = THUMBNAIL_LIVE_VERSION
+
+# Tight: старшие биты управляющего байта.
+TIGHT_FILL = 0x08
+TIGHT_JPEG = 0x09
+TIGHT_FILTER_COPY = 0
+TIGHT_FILTER_PALETTE = 1
+TIGHT_FILTER_GRADIENT = 2
+TIGHT_MAX_WIDTH = 2048
+TIGHT_MIN_TO_COMPRESS = 12
+
+# Кодек, который клиент предпочитает (первым в SetEncodings).
+CODEC_TIGHT = "tight"
+CODEC_ZLIB = "zlib"
+CODEC_RAW = "raw"
+CODECS = (CODEC_TIGHT, CODEC_ZLIB, CODEC_RAW)
 
 # Флаги Extended Clipboard.
 CB_TEXT = 1 << 0
@@ -53,6 +81,7 @@ MAX_CLIPBOARD_BYTES = 4 * 1_048_576
 MAX_RECTANGLES = 65_535
 MAX_CURSOR_SIDE = 256
 MAX_SCREENS = 64
+MAX_TIGHT_LENGTH = 1 << 22  # предел компактной длины Tight (3 байта по 7 бит)
 
 _RESOLVER = DnsResolver("vnc-viewer-dns", workers=1, queue_size=16)
 
@@ -148,6 +177,62 @@ class RectData:
 
 
 @dataclass(frozen=True)
+class FillRect:
+    """Tight: область одного цвета (0xRRGGBB)."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+    color: int
+
+
+@dataclass(frozen=True)
+class JpegRect:
+    """Tight: область в JPEG; декодирует рабочий поток (Qt)."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+    data: bytes
+
+
+@dataclass(frozen=True)
+class RgbRect:
+    """Tight: пиксели RGB888 построчно (без выравнивания строк)."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+    data: bytes
+
+
+@dataclass(frozen=True)
+class PaletteRect:
+    """Tight: индексы палитры; bits=1 — строки по байтам, старший бит слева."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+    bits: int
+    data: bytes
+    colors: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class ScalingInfo:
+    """Подтверждение расширения миниатюр kmsvnc: версия и полный размер экрана."""
+
+    version: int
+    max_divisor: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
 class CopyRect:
     x: int
     y: int
@@ -213,6 +298,17 @@ def msg_set_encodings(encodings: list[int]) -> bytes:
 
 def msg_update_request(incremental: bool, x: int, y: int, w: int, h: int) -> bytes:
     return struct.pack(">BBHHHH", 3, int(incremental), x, y, w, h)
+
+
+def msg_server_scaling(width: int, height: int) -> bytes:
+    """Размер кадра для «живого» клиента kmsvnc (0×0 — полный размер).
+
+    Отправлять только после ScalingInfo с версией ≥ SERVER_SCALING_VERSION:
+    чужой сервер на неизвестное сообщение закрывает соединение.
+    """
+    width = min(max(int(width), 0), 0xFFFF)
+    height = min(max(int(height), 0), 0xFFFF)
+    return struct.pack(">BBHH", THUMBNAIL_MESSAGE, 0, width, height)
 
 
 def msg_key(keysym: int, down: bool) -> bytes:
@@ -465,17 +561,39 @@ def handshake(sock: socket.socket, password: str) -> ServerInit:
     return ServerInit(width, height, "".join(ch for ch in name if ch.isprintable())[:200])
 
 
-def default_encodings(compress_level: int = 6, *, cursor_shape: bool = True) -> list[int]:
+def default_encodings(
+    compress_level: int = 6,
+    *,
+    cursor_shape: bool = True,
+    codec: str = CODEC_TIGHT,
+    quality: int | None = 6,
+    server_scaling: bool = False,
+) -> list[int]:
     """Кодирования клиента.
 
     cursor_shape: форма курсора отдельно (рисует окно, без задержки сети). Без
     неё сервер рисует курсор в кадре: так в режиме просмотра виден курсор хоста.
+    codec: предпочитаемое кодирование — Tight (с запасным Zlib), Zlib или Raw.
+    quality: уровень JPEG 0–9 для Tight; None — Tight без потерь (без JPEG).
+    server_scaling: объявить «живого» клиента kmsvnc; чужой сервер и kmsvnc
+    до 0.0.6-12 псевдокодировку игнорируют, новый отвечает подтверждением
+    (ScalingInfo).
     """
     level = min(max(int(compress_level), 0), 9)
-    encodings = [ENC_COPYRECT, ENC_ZLIB, ENC_RAW, ENC_EXT_DESKTOP_SIZE, ENC_DESKTOP_SIZE]
+    tight = codec == CODEC_TIGHT
+    encodings = [ENC_COPYRECT]
+    if tight:
+        encodings += [ENC_TIGHT, ENC_ZLIB]
+    elif codec == CODEC_ZLIB:
+        encodings.append(ENC_ZLIB)
+    encodings += [ENC_RAW, ENC_EXT_DESKTOP_SIZE, ENC_DESKTOP_SIZE]
     if cursor_shape:
         encodings += [ENC_RICH_CURSOR, ENC_POINTER_POS]
     encodings += [ENC_LAST_RECT, ENC_EXT_CLIPBOARD, ENC_COMPRESS_LEVEL_0 + level]
+    if tight and quality is not None:
+        encodings.append(ENC_QUALITY_LEVEL_0 + min(max(int(quality), 0), 9))
+    if server_scaling:
+        encodings.append(ENC_SERVER_SCALING)
     return encodings
 
 
@@ -493,7 +611,16 @@ class RfbStreamParser:
         self.width = width
         self.height = height
         self._bpp = pixel_format.bytes_per_pixel
+        self._format = pixel_format
+        # TPIXEL Tight: 3 байта RGB только для 32 бит глубины 24 с 8 битами на канал.
+        self._tpixel = (
+            pixel_format.bits == 32
+            and pixel_format.depth == 24
+            and (pixel_format.red_max, pixel_format.green_max, pixel_format.blue_max)
+            == (255, 255, 255)
+        )
         self._zlib = zlib.decompressobj()
+        self._tight_streams: list = [None, None, None, None]
         self._buffer = bytearray()
         self._events: list[object] = []
         self._gen = self._messages()
@@ -558,10 +685,21 @@ class RfbStreamParser:
         header = yield 3
         count = struct.unpack(">H", header[1:3])[0]
         bpp = self._bpp
+        pixel_rects = 0
+        info_rects = 0
         for _ in range(count):
             x, y, w, h, encoding = struct.unpack(">HHHHi", (yield 12))
             if encoding == ENC_LAST_RECT:
                 break
+            if encoding == ENC_SERVER_SCALING:
+                # Подтверждение kmsvnc: x — версия, y — наибольший делитель.
+                self._events.append(ScalingInfo(x, y, w, h))
+                info_rects += 1
+                continue
+            pixel_rects += 1
+            if encoding == ENC_TIGHT:
+                yield from self._tight(x, y, w, h)
+                continue
             if encoding == ENC_RAW:
                 if not w or not h:
                     continue
@@ -617,4 +755,149 @@ class RfbStreamParser:
                 self._events.append(PointerPos(x, y))
             else:
                 raise RfbViewerError(f"Сервер VNC прислал неподдерживаемое кодирование ({encoding})")
+        # Обновление только с подтверждением расширения kmsvnc пишет вне
+        # очереди: на запрос клиента оно не отвечает.
+        if info_rects and not pixel_rects:
+            return
         self._events.append(UpdateDone())
+
+    # ---------- Tight ----------
+
+    def _compact_length(self) -> Generator[int, bytes, int]:
+        value = 0
+        for shift in (0, 7, 14):
+            byte = (yield 1)[0]
+            if shift == 14:
+                value |= byte << 14
+                break
+            value |= (byte & 0x7F) << shift
+            if not byte & 0x80:
+                break
+        if value > MAX_TIGHT_LENGTH:
+            raise RfbViewerError("Недопустимая длина данных Tight")
+        return value
+
+    def _tight_pixel_size(self) -> int:
+        return 3 if self._tpixel else self._bpp
+
+    def _rgb(self, pixel: bytes) -> int:
+        """Цвет 0xRRGGBB из TPIXEL или пикселя в формате клиента."""
+        if self._tpixel:
+            return (pixel[0] << 16) | (pixel[1] << 8) | pixel[2]
+        fmt = self._format
+        value = int.from_bytes(pixel, "little")
+        r = ((value >> fmt.red_shift) & fmt.red_max) * 255 // fmt.red_max
+        g = ((value >> fmt.green_shift) & fmt.green_max) * 255 // fmt.green_max
+        b = ((value >> fmt.blue_shift) & fmt.blue_max) * 255 // fmt.blue_max
+        return (r << 16) | (g << 8) | b
+
+    def _tight(self, x: int, y: int, w: int, h: int) -> Generator[int, bytes, None]:
+        self._check_bounds(x, y, w, h)
+        control = (yield 1)[0]
+        for stream in range(4):
+            if control & (1 << stream):
+                self._tight_streams[stream] = None
+        subtype = control >> 4
+        if subtype == TIGHT_FILL:
+            pixel = yield self._tight_pixel_size()
+            if w and h:
+                self._events.append(FillRect(x, y, w, h, self._rgb(pixel)))
+            return
+        if subtype == TIGHT_JPEG:
+            length = yield from self._compact_length()
+            if length > w * h * 4 + 65_536:
+                raise RfbViewerError("Недопустимый размер JPEG")
+            data = (yield length) if length else b""
+            if w and h:
+                self._events.append(JpegRect(x, y, w, h, data))
+            return
+        if subtype & 0x08:
+            raise RfbViewerError(f"Неподдерживаемый вид сжатия Tight ({subtype})")
+        if w > TIGHT_MAX_WIDTH:
+            raise RfbViewerError("Слишком широкая область Tight")
+        stream = subtype & 0x03
+        pixel_size = self._tight_pixel_size()
+        filter_id = TIGHT_FILTER_COPY
+        if subtype & 0x04:
+            filter_id = (yield 1)[0]
+        colors: tuple[int, ...] = ()
+        bits = 8
+        if filter_id == TIGHT_FILTER_PALETTE:
+            count = (yield 1)[0] + 1
+            raw = yield count * pixel_size
+            colors = tuple(
+                self._rgb(raw[i * pixel_size : (i + 1) * pixel_size]) for i in range(count)
+            )
+            bits = 1 if count == 2 else 8
+            row_bytes = (w + 7) // 8 if bits == 1 else w
+        elif filter_id in (TIGHT_FILTER_COPY, TIGHT_FILTER_GRADIENT):
+            row_bytes = w * pixel_size
+        else:
+            raise RfbViewerError(f"Неизвестный фильтр Tight ({filter_id})")
+        expected = row_bytes * h
+        if expected < TIGHT_MIN_TO_COMPRESS:
+            data = (yield expected) if expected else b""
+        else:
+            length = yield from self._compact_length()
+            if length > expected + expected // 100 + 1024:
+                raise RfbViewerError("Недопустимый размер сжатых данных")
+            compressed = (yield length) if length else b""
+            decompressor = self._tight_streams[stream]
+            if decompressor is None:
+                decompressor = self._tight_streams[stream] = zlib.decompressobj()
+            try:
+                data = decompressor.decompress(compressed, expected + 1)
+            except zlib.error as error:
+                raise RfbViewerError("Повреждённые сжатые данные Tight") from error
+            if len(data) != expected or decompressor.unconsumed_tail:
+                raise RfbViewerError("Повреждённые сжатые данные Tight")
+        if not w or not h:
+            return
+        if filter_id == TIGHT_FILTER_PALETTE:
+            self._events.append(PaletteRect(x, y, w, h, bits, data, colors))
+            return
+        if filter_id == TIGHT_FILTER_GRADIENT:
+            data = self._ungradient(data, w, h)
+        if self._tpixel:
+            self._events.append(RgbRect(x, y, w, h, data))
+        else:
+            self._events.append(RectData(x, y, w, h, data))
+
+    def _ungradient(self, data: bytes, w: int, h: int) -> bytes:
+        """Обратный градиентный фильтр Tight (медленный путь: с JPEG серверы его не шлют)."""
+        if self._tpixel:
+            out = bytearray(data)
+            stride = w * 3
+            for row in range(h):
+                base = row * stride
+                for col in range(w):
+                    index = base + col * 3
+                    for c in range(3):
+                        left = out[index - 3 + c] if col else 0
+                        up = out[index - stride + c] if row else 0
+                        corner = out[index - stride - 3 + c] if row and col else 0
+                        predicted = min(max(left + up - corner, 0), 255)
+                        out[index + c] = (predicted + data[index + c]) & 0xFF
+            return bytes(out)
+        fmt = self._format
+        size = self._bpp
+        channels = (
+            (fmt.red_shift, fmt.red_max),
+            (fmt.green_shift, fmt.green_max),
+            (fmt.blue_shift, fmt.blue_max),
+        )
+        values = [int.from_bytes(data[i : i + size], "little") for i in range(0, len(data), size)]
+        result = [0] * len(values)
+        for row in range(h):
+            for col in range(w):
+                index = row * w + col
+                pixel = 0
+                for shift, maximum in channels:
+                    left = (result[index - 1] >> shift) & maximum if col else 0
+                    up = (result[index - w] >> shift) & maximum if row else 0
+                    corner = (result[index - w - 1] >> shift) & maximum if row and col else 0
+                    predicted = min(max(left + up - corner, 0), maximum)
+                    delta = (values[index] >> shift) & maximum
+                    pixel |= ((predicted + delta) & maximum) << shift
+                result[index] = pixel
+        return b"".join(value.to_bytes(size, "little") for value in result)

@@ -18,9 +18,9 @@ from src.workers.setup.installers.system_vnc import (
 from src.workers.setup.templates import _KMSVNC_SERVICE_TEMPLATE
 
 RPM = BundledRpm(
-    file_name="kmsvnc-0.0.6-10.20240625git190db24.dno-rosa2021.1.x86_64.rpm",
-    sha256="bf424dd521a6a8a61618754f6f252cd907a455c503d912f03e3b4198d26da2f4",
-    evr="0.0.6-10.20240625git190db24.dno",
+    file_name="kmsvnc-0.0.6-14.20240625git190db24.dno-rosa2021.1.x86_64.rpm",
+    sha256="4882c7ca7de769a2ce544803789ff0d87a617808f8e740a37955570ee16e9dbf",
+    evr="0.0.6-14.20240625git190db24.dno",
 )
 RPM_ARCH = "x86_64"
 # Старшая версия символов glibc в программе (objdump -T): пакет собран
@@ -37,6 +37,25 @@ INCOMPATIBLE_HINT = "Выберите x11vnc (сеанс X11) или KRFB (Wayla
 # (drm_vendors в drm.c). NVIDIA читает AB30/BLOCK_LINEAR через EGL DMA-BUF;
 # импорт и чтение проверяются до открытия VNC-порта.
 SUPPORTED_DRIVERS = ("i915", "amdgpu", "vmwgfx", "vboxvideo", "virtio_gpu", "nvidia")
+# Драйверы вне таблицы kmsvnc с линейным кадром в dumb-буфере: kmsvnc читает
+# их общим способом (ветка «Untested drm driver» в drm_vendors). bochs-drm
+# (QEMU stdvga) проверен на хосте: 1920×1080 XR24 LINEAR, миниатюры и окно VNC.
+# Имена — как у драйвера в sysfs (у части драйверов зависят от ядра). Если
+# формат кадра не подойдёт, kmsvnc не откроет порт, и мастер откатит установку.
+# Драйверы с плиточным кадром (nouveau, radeon) сюда не входят: картинка была бы
+# мусором при открытом порту.
+GENERIC_DRIVERS = (
+    "bochs-drm",
+    "bochs",
+    "qxl",
+    "cirrus",
+    "cirrus-qemu",
+    "ast",
+    "mgag200",
+    "hyperv_drm",
+    "simple-framebuffer",
+    "simpledrm",
+)
 
 # Видеокарты: имя, драйвер, подключён ли монитор, устойчивый путь
 # (/dev/dri/by-path: номер cardN может смениться после перезагрузки).
@@ -94,9 +113,11 @@ def choose_card(gpus) -> HostCheck:
     if not gpus:
         return HostCheck(False, "На хосте не найдена видеокарта DRM")
     displaying = [gpu for gpu in gpus if gpu[2]] or list(gpus)
-    for _name, driver, _connected, path in displaying:
-        if driver in SUPPORTED_DRIVERS:
-            return HostCheck(True, card=path)
+    # Сначала драйвер из таблицы kmsvnc, затем общий способ чтения.
+    for drivers in (SUPPORTED_DRIVERS, GENERIC_DRIVERS):
+        for _name, driver, _connected, path in displaying:
+            if driver in drivers:
+                return HostCheck(True, card=path)
     drivers = sorted({driver or "неизвестен" for _n, driver, _c, _p in displaying})
     return HostCheck(
         False, f"Видеодрайвер {', '.join(drivers)} kmsvnc не поддерживает"

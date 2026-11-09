@@ -86,6 +86,26 @@ def _separator() -> QFrame:
     return line
 
 
+# Качество JPEG для Tight (как пресеты RustDesk); None — без потерь.
+QUALITY_PRESETS: tuple[tuple[str, int | None], ...] = (
+    ("Лучшее качество", 9),
+    ("Сбалансированное", 6),
+    ("Быстрый отклик", 2),
+    ("Без потерь", None),
+)
+CODEC_CHOICES: tuple[tuple[str, str], ...] = (
+    ("Tight — JPEG и сжатие без потерь", "tight"),
+    ("Zlib — без потерь, трафик больше", "zlib"),
+    ("Без сжатия — только для быстрой локальной сети", "raw"),
+)
+CODEC_NAMES = {"tight": "Tight", "zlib": "Zlib", "raw": "без сжатия"}
+FPS_CHOICES: tuple[tuple[str, int], ...] = (
+    ("Без ограничения", 0),
+    ("30 кадров/с", 30),
+    ("15 кадров/с", 15),
+    ("5 кадров/с", 5),
+)
+
 class VncControlPanel(QFrame):
     """Панель управления окном VNC; сама прячется и выдвигается."""
 
@@ -98,6 +118,10 @@ class VncControlPanel(QFrame):
     fullscreen_toggled = Signal(bool)
     keyboard_mode_changed = Signal(str)
     low_color_changed = Signal(bool)
+    quality_changed = Signal(object)  # int 0–9 | None — без потерь
+    codec_changed = Signal(str)  # "tight" | "zlib" | "raw"
+    resolution_changed = Signal(object)  # "auto" | делитель экрана
+    fps_changed = Signal(int)  # 0 — без ограничения
     reconnect_requested = Signal()
     close_requested = Signal()
 
@@ -272,17 +296,10 @@ class VncControlPanel(QFrame):
             keyboard_group.addAction(action)
             settings_menu.addAction(action)
             action.triggered.connect(lambda _=False, v=mode: self.keyboard_mode_changed.emit(v))
-        settings_menu.addSection("Качество изображения")
-        quality_group = QActionGroup(self)
-        self.full_color_action = QAction("Полный цвет", self)
-        self.low_color_action = QAction("Экономия трафика (16 бит)", self)
-        for action, low in ((self.full_color_action, False), (self.low_color_action, True)):
-            action.setCheckable(True)
-            quality_group.addAction(action)
-            settings_menu.addAction(action)
-            action.triggered.connect(lambda _=False, v=low: self.low_color_changed.emit(v))
+        self._build_image_menu()
+        layout.addWidget(self.image_button)
         self.settings_button = self._menu_button(
-            "menu_settings", "Настройки", "Раскладка клавиатуры и качество изображения", settings_menu
+            "menu_settings", "Настройки", "Раскладка клавиатуры", settings_menu
         )
         layout.addWidget(self.settings_button)
 
@@ -337,6 +354,112 @@ class VncControlPanel(QFrame):
 
     def set_low_color(self, low: bool) -> None:
         (self.low_color_action if low else self.full_color_action).setChecked(True)
+
+    # ---------- Меню «Изображение» ----------
+
+    def _choice_menu(self, parent: QMenu, title: str) -> tuple[QMenu, QActionGroup]:
+        menu = parent.addMenu(title)
+        menu.setToolTipsVisible(True)
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        return menu, group
+
+    def _choice(self, menu: QMenu, group: QActionGroup, label: str, signal, value) -> QAction:
+        action = QAction(label, self)
+        action.setCheckable(True)
+        group.addAction(action)
+        menu.addAction(action)
+        action.triggered.connect(lambda _=False, v=value: signal.emit(v))
+        return action
+
+    def _build_image_menu(self) -> None:
+        """Качество, кодек, разрешение, частота кадров и цвет — как в RustDesk."""
+        menu = QMenu(self)
+        menu.setToolTipsVisible(True)
+
+        self.quality_menu, group = self._choice_menu(menu, "Качество")
+        self.quality_actions: dict[object, QAction] = {}
+        for label, value in QUALITY_PRESETS:
+            self.quality_actions[value] = self._choice(self.quality_menu, group, label, self.quality_changed, value)
+        custom = self.quality_menu.addMenu("Своё качество JPEG")
+        self.custom_quality_actions: dict[int, QAction] = {}
+        for level in range(9, -1, -1):
+            label = f"{level}" + (" — лучше" if level == 9 else " — меньше трафика" if level == 0 else "")
+            self.custom_quality_actions[level] = self._choice(custom, group, label, self.quality_changed, level)
+
+        self.codec_menu, group = self._choice_menu(menu, "Кодек")
+        self.codec_actions: dict[str, QAction] = {}
+        for label, value in CODEC_CHOICES:
+            self.codec_actions[value] = self._choice(self.codec_menu, group, label, self.codec_changed, value)
+
+        self.resolution_menu, self._resolution_group = self._choice_menu(menu, "Разрешение")
+        self.resolution_actions: dict[object, QAction] = {}
+        self._resolution_label = ""
+        self.set_resolution_choices([], None)
+
+        self.fps_menu, group = self._choice_menu(menu, "Частота кадров")
+        self.fps_actions: dict[int, QAction] = {}
+        for label, value in FPS_CHOICES:
+            self.fps_actions[value] = self._choice(self.fps_menu, group, label, self.fps_changed, value)
+
+        self.color_menu, group = self._choice_menu(menu, "Цвет")
+        self.full_color_action = self._choice(self.color_menu, group, "Полный цвет", self.low_color_changed, False)
+        self.low_color_action = self._choice(
+            self.color_menu, group, "Экономия трафика (16 бит)", self.low_color_changed, True
+        )
+        self.image_button = self._menu_button(
+            "menu_veyon_view", "Изображение", "Качество, кодек, разрешение и частота кадров", menu
+        )
+
+    def set_quality(self, quality: int | None) -> None:
+        action = self.quality_actions.get(quality) or self.custom_quality_actions.get(quality)
+        if action is not None:
+            action.setChecked(True)
+        name = next((label for label, value in QUALITY_PRESETS if value == quality), None)
+        self.quality_menu.setTitle(f"Качество: {name.lower() if name else f'JPEG {quality}'}")
+
+    def set_codec(self, codec: str) -> None:
+        action = self.codec_actions.get(codec)
+        if action is not None:
+            action.setChecked(True)
+        self.codec_menu.setTitle(f"Кодек: {CODEC_NAMES.get(codec, codec)}")
+        # Качество (JPEG) есть только у Tight.
+        tight = codec == "tight"
+        self.quality_menu.setEnabled(tight)
+        self.quality_menu.menuAction().setToolTip("" if tight else "Качество JPEG есть только у кодека Tight")
+
+    def set_fps(self, fps: int) -> None:
+        action = self.fps_actions.get(fps)
+        if action is not None:
+            action.setChecked(True)
+        self.fps_menu.setTitle("Частота кадров: " + (f"{fps} к/с" if fps else "без ограничения"))
+
+    def set_resolution_choices(self, choices: list[tuple[str, object]], current, note: str = "") -> None:
+        """Пункты разрешения (подпись, значение); пустой список — сервер не уменьшает кадр."""
+        for action in self.resolution_actions.values():
+            self._resolution_group.removeAction(action)
+        self.resolution_menu.clear()
+        self.resolution_actions = {}
+        if not choices:
+            action = self.resolution_menu.addAction(note or "Исходное")
+            action.setEnabled(False)
+            if note:
+                action.setToolTip("Сервер VNC этого хоста не умеет уменьшать кадр")
+            self.resolution_menu.setTitle("Разрешение")
+            return
+        for label, value in choices:
+            self.resolution_actions[value] = self._choice(
+                self.resolution_menu, self._resolution_group, label, self.resolution_changed, value
+            )
+        self.set_resolution(current)
+
+    def set_resolution(self, value) -> None:
+        action = self.resolution_actions.get(value)
+        if action is None:
+            return
+        action.setChecked(True)
+        label = action.text().replace(" — ", ", ")
+        self.resolution_menu.setTitle(f"Разрешение: {label}")
 
     def set_clipboard(self, enabled: bool) -> None:
         self.clipboard_button.blockSignals(True)

@@ -55,6 +55,7 @@ TOOLTIP_FIELDS = [
     ("load", "Нагрузка CPU"),
     ("memory", "Память"),
     ("sessions", "Активных сеансов"),
+    ("vnc", "VNC-сервер"),
 ]
 
 # Полное меню тулбара «Информация в тултипе хоста»: статика + живые поля
@@ -63,7 +64,7 @@ TOOLTIP_MENU_FIELDS = STATIC_TOOLTIP_FIELDS + TOOLTIP_FIELDS
 
 _STATIC_KEYS = {key for key, _label in STATIC_TOOLTIP_FIELDS}
 
-DEFAULT_FIELDS = ["name", "host", "port", "node", "user", "login_time", "uptime"]
+DEFAULT_FIELDS = ["name", "host", "port", "node", "user", "login_time", "uptime", "vnc"]
 
 # Метки полей (для build_tooltip) — статические + живые.
 _FIELD_LABELS = dict(TOOLTIP_MENU_FIELDS)
@@ -81,6 +82,7 @@ class HostInfoSnapshot:
     load: str = ""
     memory: str = ""
     sessions: str = ""
+    vnc: str = ""
     fetched_at: float = 0.0
 
     def field(self, key: str) -> str:
@@ -125,7 +127,22 @@ _HOST_INFO_SCRIPT = (
     'echo "$D|BOOT|$(uptime -s 2>/dev/null)"; '
     'echo "$D|OS|$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"; '
     'echo "$D|LOAD|$(cat /proc/loadavg 2>/dev/null)"; '
-    "echo \"$D|MEM|$(free -m 2>/dev/null | awk '/^Mem:/{print $2, $3}')\""
+    "echo \"$D|MEM|$(free -m 2>/dev/null | awk '/^Mem:/{print $2, $3}')\"; "
+    # VNC-сервер: тот же порядок, что у KRFBService._host_server — включённая
+    # служба kmsvnc, затем x11vnc, затем KRFB (служба мастера krfb-dno или
+    # процесс krfb; бинарник KRFB есть в МОС всегда и признаком не считается).
+    # Строка: «имя состояние [версия]», без сервера — «none».
+    "V=; for s in kmsvnc x11vnc; do "
+    '[ "$(systemctl is-enabled $s.service 2>/dev/null)" = enabled ] && '
+    '{ V="$s $(systemctl is-active $s.service 2>/dev/null) '
+    "$(rpm -q --qf '%{VERSION}-%{RELEASE}' $s 2>/dev/null | grep -E '^[0-9]')\"; break; }; "
+    "done; "
+    'if [ -z "$V" ]; then K=; '
+    "systemctl --global is-enabled krfb-dno.service 2>/dev/null | grep -qx enabled && K=1; "
+    "ls /home/*/.config/systemd/user/*.wants/krfb-dno.service >/dev/null 2>&1 && K=1; "
+    "if pgrep -x krfb >/dev/null 2>&1; then V='krfb active'; "
+    "elif [ -n \"$K\" ]; then V='krfb inactive'; fi; fi; "
+    'echo "$D|VNC|${V:-none}"'
 )
 
 
@@ -213,8 +230,44 @@ def _parse_host_info_script(output: str) -> HostInfoSnapshot:
                         snap.memory = f"{used_mb} / {total_mb} МБ"
                 except ValueError:
                     pass
+        elif tag == "VNC":
+            snap.vnc = _format_vnc(payload)
 
     return snap
+
+
+# Состояние службы (systemctl is-active) → текст подсказки.
+_VNC_STATES = {
+    "active": "работает",
+    "inactive": "остановлен",
+    "failed": "ошибка запуска",
+    "activating": "запускается",
+    "deactivating": "останавливается",
+}
+_VNC_NAMES = {"kmsvnc": "kmsvnc", "x11vnc": "x11vnc", "krfb": "KRFB"}
+
+
+def _format_vnc(payload: str) -> str:
+    """'kmsvnc active 0.0.6-11.2024…dno' → 'kmsvnc 0.0.6-11, работает'.
+
+    'none' → 'не найден'. Незнакомый вывод (эхо, мусор) → пусто: поле не
+    показывается, а не показывает неверное.
+    """
+    parts = (payload or "").split()
+    if parts == ["none"]:
+        return "не найден"
+    if len(parts) < 2 or parts[0] not in _VNC_NAMES:
+        return ""
+    name = _VNC_NAMES[parts[0]]
+    if len(parts) >= 3 and re.match(r"^\d[\w.+~-]*$", parts[2]):
+        # VERSION-RELEASE без даты и коммита (как short_evr мастера): 0.0.6-11.
+        version, _, release = parts[2].partition("-")
+        build = release.split(".", 1)[0]
+        name = f"{name} {version}-{build}" if build else f"{name} {version}"
+    state = _VNC_STATES.get(parts[1])
+    if state is None and re.match(r"^[a-z-]+$", parts[1]):
+        state = parts[1]
+    return f"{name}, {state}" if state else name
 
 
 def _format_login_time_iso(day: str, time_str: str) -> str:

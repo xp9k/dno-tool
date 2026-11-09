@@ -44,6 +44,16 @@ PIXEL_FORMAT = struct.pack(">BBBBHHHBBB3x", 32, 24, 0, 1, 255, 255, 255, 16, 8, 
 # псевдокодировку игнорирует и сообщения о размере не получает.
 THUMBNAIL_ENCODING = 0x444E4F54
 THUMBNAIL_MESSAGE = 0xC4
+# Версия 2: флаг в сообщении размера перед запросом кадра — сервер снимает
+# экран и отвечает этим снимком. Между запросами сервер экран не снимает.
+THUMBNAIL_CAPTURE_VERSION = 2
+THUMBNAIL_FLAG_CAPTURE = 0x01
+# Версия 3: отдельная псевдокодировка «живого» клиента (окно VNC) —
+# уменьшенный кадр с полной частотой съёмки. Не флаг: сервер версии ≤ 2
+# считал бы окно, объявившее THUMBNAIL_ENCODING, миниатюрой, а новую
+# псевдокодировку он просто не знает.
+THUMBNAIL_LIVE_VERSION = 3
+THUMBNAIL_LIVE_ENCODING = 0x444E4F4C
 _THUMBNAIL_ACK = struct.pack(">BBHHHHHi", 0, 0, 1, 0, 0, 0, 0, THUMBNAIL_ENCODING)
 # Подтверждение приходит через один обмен после SetEncodings. Ожидание
 # привязано к времени обмена при подключении: на старом сервере подтверждения
@@ -168,6 +178,7 @@ class RfbSession:
         # Уменьшение кадра сервером: запрашивается только для миниатюр.
         self._server_scaling = server_scaling
         self.scaling_supported = False
+        self.scaling_version = 0
         self.full_width = 0
         self.full_height = 0
         self.requested_size: tuple[int, int] | None = None
@@ -413,7 +424,20 @@ class RfbSession:
         if not self._server_scaling or not version or not width or not height:
             raise RfbError("thumbnail_ack")
         self.scaling_supported = True
+        self.scaling_version = version
         self.full_width, self.full_height = width, height
+
+    @property
+    def capture_on_request(self) -> bool:
+        """Сервер снимает экран по флагу перед запросом кадра (kmsvnc, версия 2).
+
+        Флаг идёт в сообщении размера, поэтому нужен уже отправленный размер.
+        """
+        return (
+            self.scaling_supported
+            and self.scaling_version >= THUMBNAIL_CAPTURE_VERSION
+            and self.requested_size is not None
+        )
 
     def request_size(self, width: int, height: int, deadline: float) -> bool:
         """Попросить сервер присылать кадр не меньше ``width``×``height``.
@@ -504,6 +528,7 @@ class RfbSession:
                 raise RfbError("rectangle_count")
             decoded_bytes = 0
             wire_bytes = 0
+            pixels = False
             for index in range(count):
                 rect = yield 12
                 x, y, w, h, encoding = struct.unpack(">HHHHi", rect)
@@ -557,6 +582,7 @@ class RfbSession:
                 else:
                     raise RfbError("unsupported_encoding", "unsupported")
                 self._write_rectangle(x, y, w, h, data)
+                pixels = True
                 del data
                 self.encoding_counts[encoding] = (
                     self.encoding_counts.get(encoding, 0) + 1
@@ -566,23 +592,41 @@ class RfbSession:
                 self.complete = True
             if self.complete:
                 self.frame_time = time.monotonic()
+            if count and not pixels and self.scaling_supported:
+                # kmsvnc (libvncserver): подтверждение расширения пишется мимо
+                # очереди обновлений, DesktopSize уходит отдельным обновлением,
+                # и в обоих случаях запрос остаётся открытым — кадр придёт на
+                # него же. Новый запрос дал бы второй кадр, который пролежал бы
+                # в сокете до следующего такта и показался бы устаревшим.
+                return
             self.pending = False
             return
 
     def poll(self, deadline: float) -> bool:
         """Process one update; a quiet/fragmented screen returns False, not EOF."""
         if not self.pending:
-            self._send(
-                struct.pack(
-                    ">BBHHHH", 3, int(self.complete), 0, 0, self.width, self.height
-                ),
-                deadline,
+            request = struct.pack(
+                ">BBHHHH", 3, int(self.complete), 0, 0, self.width, self.height
             )
+            if self.capture_on_request:
+                # Флаг снимка перед каждым запросом: сервер снимет экран после
+                # него и ответит этим снимком (или пикселем без изменений).
+                request = (
+                    struct.pack(
+                        ">BBHH",
+                        THUMBNAIL_MESSAGE,
+                        THUMBNAIL_FLAG_CAPTURE,
+                        *self.requested_size,
+                    )
+                    + request
+                )
+            self._send(request, deadline)
             self.pending = True
+        if self._parser is None:
+            # Новый запрос или запрос, оставшийся открытым после обновления
+            # без пикселей (см. конец _messages).
             self._parser = self._messages()
             self._needed = next(self._parser)
-        if self._parser is None:
-            raise RfbError("parser_state")
         try:
             while True:
                 data = self._read(self._needed, deadline)

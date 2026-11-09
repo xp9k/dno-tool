@@ -51,7 +51,22 @@ from src.ui.dialogs.tools.vnc_viewer_panel import (
 )
 from src.ui.icons import _icon_from_key
 from src.workers.vnc_viewer.keymap import KEYBOARD_PHYSICAL, KEYBOARD_SYMBOL, key_to_keysym
-from src.workers.vnc_viewer.worker import VncViewerWorker
+from src.workers.vnc_viewer.protocol import CODECS
+from src.workers.vnc_viewer.worker import (
+    DEFAULT_CODEC,
+    DEFAULT_FPS,
+    DEFAULT_QUALITY,
+    DEFAULT_SCALE,
+    FPS_LIMITS,
+    MAX_SCALE_DIVISOR,
+    SCALE_AUTO,
+    VncViewerWorker,
+    scale_divisor,
+    valid_scale,
+)
+
+# Самое маленькое предлагаемое разрешение (по меньшей стороне).
+MIN_RESOLUTION_SIDE = 400
 
 STATE_ID = "vnc_viewer"
 SCREEN_DETECT_DELAY_MS = 1500
@@ -423,6 +438,14 @@ class VncViewerWindow(QMainWindow):
         self._detected_screens: list[QRect] = []
         self._screen_detect_size: QSize | None = None
         self._current_screen: QRect | None = None
+        # Выбранный монитор — номер в раскладке, а не прямоугольник: после смены
+        # разрешения или переподключения координаты другие, выбор остаётся.
+        # Запоминается для хоста; None — все экраны.
+        self._screen_key = f"screen:{getattr(device, 'iid', '') or device.host}"
+        screen_index = self._store.get(self._screen_key, -1)
+        self._screen_index: int | None = (
+            screen_index if isinstance(screen_index, int) and screen_index >= 0 else None
+        )
         self._last_remote_clip = ""
         self._last_sent_clip = ""
         self._clipboard = bool(self._store.get("clipboard", True))
@@ -435,6 +458,22 @@ class VncViewerWindow(QMainWindow):
             mode_value if mode_value in (KEYBOARD_PHYSICAL, KEYBOARD_SYMBOL) else KEYBOARD_PHYSICAL
         )
         self._low_color = bool(self._store.get("low_color", False))
+        # Качество JPEG: целое 0–9, -1 в настройках — без потерь.
+        quality = self._store.get("quality", DEFAULT_QUALITY)
+        if isinstance(quality, int) and 0 <= quality <= 9:
+            self._quality: int | None = quality
+        else:
+            self._quality = None if quality == -1 else DEFAULT_QUALITY
+        codec = self._store.get("codec", DEFAULT_CODEC)
+        self._codec = codec if codec in CODECS else DEFAULT_CODEC
+        fps = self._store.get("fps", DEFAULT_FPS)
+        self._fps = fps if fps in FPS_LIMITS else DEFAULT_FPS
+        # Разрешение — для каждого хоста своё (экраны разные), как в RustDesk.
+        self._scale_key = f"resolution:{self._iid}"
+        scale = self._store.get(self._scale_key, DEFAULT_SCALE)
+        self._server_scale = scale if valid_scale(scale) else DEFAULT_SCALE
+        # Полный размер экрана, если сервер уменьшает кадр (kmsvnc ≥ 3).
+        self._server_full_size: QSize | None = None
 
         stage = _Stage()
         self._scroll = QScrollArea(stage)
@@ -474,6 +513,9 @@ class VncViewerWindow(QMainWindow):
         panel.set_fit(self._view.fit)
         panel.set_keyboard_mode(self._view.keyboard_mode)
         panel.set_low_color(self._low_color)
+        panel.set_quality(self._quality)
+        panel.set_codec(self._codec)
+        panel.set_fps(self._fps)
         panel.set_clipboard(self._clipboard)
         panel.set_screens([], None)
         panel.mode_changed.connect(self._on_mode_requested)
@@ -485,6 +527,10 @@ class VncViewerWindow(QMainWindow):
         panel.fullscreen_toggled.connect(self._on_fullscreen_toggled)
         panel.keyboard_mode_changed.connect(self._set_keyboard_mode)
         panel.low_color_changed.connect(self._set_low_color)
+        panel.quality_changed.connect(self._set_quality)
+        panel.codec_changed.connect(self._set_codec)
+        panel.resolution_changed.connect(self._set_server_scale)
+        panel.fps_changed.connect(self._set_fps)
         panel.reconnect_requested.connect(self._manual_reconnect)
         panel.close_requested.connect(self.close)
 
@@ -544,6 +590,58 @@ class VncViewerWindow(QMainWindow):
         self._store.set("low_color", low)
         self._connect()
 
+    def _set_quality(self, quality) -> None:
+        self.panel.set_quality(quality)
+        if quality == self._quality:
+            return
+        self._quality = quality
+        self._store.set("quality", -1 if quality is None else quality)
+        if self._worker is not None:
+            self._worker.set_quality(quality)
+        self._focus_view()
+
+    def _set_codec(self, codec: str) -> None:
+        self.panel.set_codec(codec)
+        if codec == self._codec:
+            return
+        self._codec = codec
+        self._store.set("codec", codec)
+        if self._worker is not None:
+            self._worker.set_codec(codec)
+        self._focus_view()
+
+    def _set_fps(self, fps: int) -> None:
+        self.panel.set_fps(fps)
+        if fps == self._fps:
+            return
+        self._fps = fps
+        self._store.set("fps", fps)
+        if self._worker is not None:
+            self._worker.set_max_fps(fps)
+        self._focus_view()
+
+    def _set_server_scale(self, scale) -> None:
+        self.panel.set_resolution(scale)
+        if scale == self._server_scale:
+            return
+        self._server_scale = scale
+        self._store.set(self._scale_key, scale)
+        if self._worker is not None:
+            self._worker.set_scale(scale)
+        self._focus_view()
+
+    def _on_server_scaling(self, width: int, height: int, supported: bool) -> None:
+        if not self._is_current():
+            return
+        self._server_full_size = QSize(width, height) if supported else None
+        if supported:
+            self.panel.set_resolution_choices(resolution_choices(width, height), self._server_scale)
+
+    def _show_fixed_resolution(self, width: int, height: int) -> None:
+        """Сервер без уменьшения кадра: в меню только его размер, недоступный для выбора."""
+        if self._server_full_size is None:
+            self.panel.set_resolution_choices([], None, f"{width}×{height} — сервер не уменьшает кадр")
+
     def _on_clipboard_toggled(self, enabled: bool) -> None:
         self._clipboard = enabled
         self._store.set("clipboard", enabled)
@@ -579,6 +677,10 @@ class VncViewerWindow(QMainWindow):
             self._password,
             low_color=self._low_color,
             cursor_shape=self._control,
+            quality=self._quality,
+            codec=self._codec,
+            scale=self._server_scale,
+            max_fps=self._fps,
         )
         track_qthread(worker, f"Окно VNC: {self._host}")
         worker.connected.connect(self._on_connected)
@@ -590,6 +692,9 @@ class VncViewerWindow(QMainWindow):
         worker.bell.connect(QApplication.beep)
         worker.stats.connect(self._on_stats)
         worker.failed.connect(self._on_failed)
+        worker.server_scaling.connect(self._on_server_scaling)
+        self._server_full_size = None
+        self.panel.set_resolution_choices([], None)
         self._worker = worker
         self._connected = False
         self._server_screens = []
@@ -627,6 +732,16 @@ class VncViewerWindow(QMainWindow):
         self._set_message("")
         self.panel.set_status(f"Подключено, {self._host}:{self._port}", STATE_CONNECTED)
         self.panel.set_info(f"{width}×{height}")
+        # Подтверждение kmsvnc приходит сразу после SetEncodings; без него
+        # через секунду меню показывает размер экрана как единственный.
+        worker = self._worker
+        QTimer.singleShot(
+            1000,
+            self,
+            lambda w=width, h=height, current=worker: (
+                current is self._worker and self._show_fixed_resolution(w, h)
+            ),
+        )
         self._worker.set_cursor_shape(self._control)
         self._send_local_clipboard(force=True)
         self._focus_view()
@@ -660,7 +775,11 @@ class VncViewerWindow(QMainWindow):
             return
         size = self._view.frame_size()
         traffic = f"{kbps / 1000:.1f} Мбит/с" if kbps >= 1000 else f"{kbps:.0f} Кбит/с"
-        self.panel.set_info(f"{size.width()}×{size.height()} · {fps:.0f} к/с · {traffic}")
+        frame = f"{size.width()}×{size.height()}"
+        full = self._server_full_size
+        if full is not None and full != size:
+            frame += f" из {full.width()}×{full.height()}"
+        self.panel.set_info(f"{frame} · {fps:.0f} к/с · {traffic}")
 
     def _on_failed(self, message: str, need_password: bool) -> None:
         if not self._is_current():
@@ -766,14 +885,23 @@ class VncViewerWindow(QMainWindow):
 
     def _refresh_screens(self) -> None:
         screens = self.available_screens()
-        if self._current_screen not in screens:
-            self._current_screen = None
+        index = self._screen_index
+        if index is not None and screens and index >= len(screens):
+            # Мониторов стало меньше: выбора больше нет.
+            index = self._screen_index = None
+            self._store.set(self._screen_key, -1)
+        # Пока раскладки нет (смена размера кадра, переподключение) — все
+        # экраны, номер сохраняется до новой раскладки.
+        self._current_screen = screens[index] if index is not None and screens else None
         self.panel.set_screens(screens, self._current_screen)
         self._view.set_screen(self._current_screen)
         self._apply_scale_mode()
 
     def _on_screen_selected(self, rect) -> None:
-        self._current_screen = QRect(rect) if isinstance(rect, QRect) else None
+        screens = self.available_screens()
+        self._current_screen = QRect(rect) if isinstance(rect, QRect) and rect in screens else None
+        self._screen_index = screens.index(self._current_screen) if self._current_screen is not None else None
+        self._store.set(self._screen_key, -1 if self._screen_index is None else self._screen_index)
         self._view.set_screen(self._current_screen)
         self._apply_scale_mode()
         self._focus_view()
@@ -849,6 +977,17 @@ class VncViewerWindow(QMainWindow):
             _WINDOWS.pop(self._iid, None)
         super().closeEvent(event)
 
+
+def resolution_choices(width: int, height: int) -> list[tuple[str, object]]:
+    """Пункты разрешения для экрана width×height: авто и целые делители."""
+    auto = scale_divisor(SCALE_AUTO, width)
+    choices: list[tuple[str, object]] = [(f"Авто — {width // auto}×{height // auto}", SCALE_AUTO)]
+    for divisor in range(1, MAX_SCALE_DIVISOR + 1):
+        w, h = width // divisor, height // divisor
+        if divisor > 1 and min(w, h) < MIN_RESOLUTION_SIDE:
+            break
+        choices.append((f"Исходное — {w}×{h}" if divisor == 1 else f"{w}×{h}", divisor))
+    return choices
 
 def open_vnc_viewer(device, mode: str = "control", view_state=None) -> VncViewerWindow:
     """Открыть окно VNC хоста или поднять уже открытое (с новым режимом)."""
