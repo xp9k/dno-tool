@@ -293,8 +293,6 @@ class KrfbBackend(VncOperations):
         #     (dnoasuser = setpriv/runuser): daemon-reload + enable krfb-dno
         #     + stop/disable штатного krfb.service + restart krfb-dno
         #     (пароль/порт/скрытие окна применяются сразу).
-        self._shutdown_legacy_x11vnc(run_cmd, log)
-        self._shutdown_kmsvnc(run_cmd, log)
         self._disable_stock_krfb_unit(run_cmd, log)
         run_cmd(
             "systemctl --global disable krfb-dno.service app-org.kde.krfb.service 2>/dev/null; "

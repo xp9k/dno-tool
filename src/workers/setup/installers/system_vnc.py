@@ -164,12 +164,7 @@ class SystemVncBackend(VncOperations):
             )
             return
 
-        # 2. Другие серверы занимают тот же порт.
-        if aborted():
-            return
-        self._shutdown_other_backends(run_cmd, log)
-
-        # 3. Пароль.
+        # 2. Пароль. Порт и прежние службы — забота установщика.
         if aborted():
             return
         if not self._write_password(run_cmd, write_file, password, log):
@@ -213,13 +208,6 @@ class SystemVncBackend(VncOperations):
         # 6. Firewall.
         self._open_firewall_v4(run_cmd, port, log)
         self._report(device, svc, RESULT_SUCCESS, "\n".join(output_lines))
-
-    def _shutdown_other_backends(self, run_cmd, log) -> None:
-        if self.NAME != "x11vnc":
-            self._shutdown_legacy_x11vnc(run_cmd, log)
-        if self.NAME != "kmsvnc":
-            self._shutdown_kmsvnc(run_cmd, log)
-        self._shutdown_legacy_krfb(run_cmd, log)
 
     def _write_password(self, run_cmd, write_file, password, log) -> bool:
         directory = shlex.quote(f"/etc/{self.NAME}")

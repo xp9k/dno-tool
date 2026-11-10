@@ -23,9 +23,9 @@ _SNAPSHOT_FILES = (
 
 # Кто держит VNC-порт или работает VNC-сервером: служба по cgroup процесса.
 # Определения общие для снимка и освобождения порта. dnoowner печатает
-# одну строку: «known» — служба мастера (её останавливает backend и
-# возвращает откат), «system UNIT» / «user ПОЛЬЗОВАТЕЛЬ UNIT» — чужая
-# служба, «none ПРИЧИНА» — процесс вне служб или служба, которую
+# одну строку: «system UNIT» / «user ПОЛЬЗОВАТЕЛЬ UNIT» — служба, которую
+# установщик остановит (любая, включая прежние службы мастера; откат
+# вернёт их), «none ПРИЧИНА» — процесс вне служб или служба, которую
 # останавливать нельзя.
 _OWNER_FUNCS = r"""
 dnocgroup() {
@@ -83,12 +83,10 @@ dnoowner() {
           done
           [ -n "$found" ] || echo "none вне служб"
           ;;
-        krfb.service|krfb-dno.service|app-org.kde.krfb.service) echo known;;
         *.service|*.socket) echo "user $u $second";;
         *) echo "none запущен из сеанса пользователя $u";;
       esac
       ;;
-    x11vnc.service|kmsvnc.service) echo known;;
     session-*.scope) echo "none запущен вручную в сеансе ${first%.scope}";;
     *.service|*.socket)
       if dnoprotected "$first"; then echo "none служба $first не останавливается мастером"
@@ -167,6 +165,13 @@ getent passwd | awk -F: '{print $1 ":" $6}' > "$D/accounts"
 for p in PATHS; do
   if [ -e "$p" ] || [ -L "$p" ]; then printf '%s\n' "$p" >> "$D/files"; fi
 done
+# Прежние VNC-службы останавливаются все, даже если порт не держат
+# (включённая служба поднялась бы после перезагрузки или перезапуска).
+for unit in x11vnc.service kmsvnc.service; do
+  if systemctl is-active --quiet "$unit" || systemctl is-enabled --quiet "$unit"; then
+    printf 'system %s\n' "$unit" >> "$D/foreign"
+  fi
+done
 systemctl is-active x11vnc.service > "$D/x11-active" || true
 systemctl is-active kmsvnc.service > "$D/kms-active" || true
 ss -H -tlnp | awk '/x11vnc|krfb|kmsvnc/ {print $4}' > "$D/listeners"
@@ -185,13 +190,19 @@ while IFS=: read -r u h; do
     if dnoasuser "$u" systemctl --user is-active --quiet "$unit"; then
       printf '%s %s\n' "$u" "$unit" >> "$D/users"
     fi
+    wanted=
+    for p in /etc/systemd/user/*.wants/"$unit" "$h"/.config/systemd/user/*.wants/"$unit"; do
+      if [ -L "$p" ]; then wanted=1; fi
+    done
+    if [ -n "$wanted" ] || dnoasuser "$u" systemctl --user is-active --quiet "$unit"; then
+      printf 'user %s %s\n' "$u" "$unit" >> "$D/foreign"
+    fi
   done
 done < "$D/accounts"
 unmanaged=
 for pid in $(dnoholders); do
   owner=$(dnoowner "$pid")
   case "$owner" in
-    known) ;;
     system\ *|user\ *) printf '%s\n' "$owner" >> "$D/foreign";;
     *) printf 'UNMANAGED\t%s: %s\n' "$(dnodescribe "$pid")" "${owner#none }"; unmanaged=1;;
   esac
@@ -256,11 +267,12 @@ echo SNAPSHOT_OK
         ]
 
     def release_foreign(self):
-        """Остановить и снять с автозапуска чужие службы на VNC-порту.
+        """Остановить и снять с автозапуска все VNC-службы и держателей порта.
 
-        Возвращает строки для журнала. Если порт после остановки держит
-        не служба мастера, бросает ``PortReleaseError``: откат вернёт
-        остановленное.
+        «Своих» и «чужих» нет: backend-ы друг о друге не знают, порт
+        освобождает установщик. Возвращает строки для журнала. Если порт
+        после остановки всё ещё занят, бросает ``PortReleaseError``:
+        откат вернёт остановленное.
         """
         if not self.foreign:
             return []
@@ -329,7 +341,7 @@ for i in $(seq 1 10); do
   busy=
   for pid in $(dnoholders); do
     owner=$(dnoowner "$pid")
-    [ "$owner" = known ] || busy="$(dnodescribe "$pid"): ${owner#none }"
+    busy="$(dnodescribe "$pid"): ${owner#none }"
   done
   [ -n "$busy" ] || break
   sleep 1
@@ -348,10 +360,10 @@ echo RELEASE_OK
             label = self.describe(entry)
             port = f"порт {self.port}" if self.port else "VNC-порт"
             if state.strip() in ("disabled", "masked", ""):
-                notes.append(f"{port} занимала {label} — остановлена и снята с автозапуска")
+                notes.append(f"{label} остановлена и снята с автозапуска")
             else:
                 notes.append(
-                    f"WARNING: {port} занимала {label} — остановлена, но "
+                    f"WARNING: {label} остановлена, но "
                     f"автозапуск снять не удалось ({state.strip()})"
                 )
         if code != 0 or "RELEASE_OK" not in out:

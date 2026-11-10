@@ -88,8 +88,8 @@ class VncInstaller(PhasedInstaller):
             self.context.log(
                 request.device.host,
                 "vnc",
-                f"VNC: порт {port} занимает {self.switch.describe(entry)}, "
-                "она будет остановлена",
+                f"VNC: {self.switch.describe(entry)} будет остановлена "
+                f"(порт {port} должен быть свободен)",
             )
         self.backend = self._backend()
         return result

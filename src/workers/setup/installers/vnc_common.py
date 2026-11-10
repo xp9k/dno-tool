@@ -12,131 +12,6 @@ class VncOperations(InstallerContext):
 
         return VeyonInstaller(self.context)._open_firewall_v4(run, port, log)
 
-    def _shutdown_legacy_krfb(self, run_cmd, log) -> None:
-        """Остановить krfb (старый бекенд) перед установкой x11vnc.
-
-        Только стоп + disable (юниты/конфиги не удаляются - можно вернуть
-        вручную). Порядок:
-          1. Root: снять автозапуск юнита krfb-dno ГЛОБАЛЬНО. Enable делался
-             systemctl --global (symlink в /etc/systemd/user/*target.wants/),
-             поэтому systemctl --user disable от пользователя его НЕ удаляет:
-             гасим симметрично от root (--global disable + удаление
-             wants-symlinks в /etc/systemd/user и /home/*).
-          2. Best-effort: stop + disable + daemon-reload юнита в
-             user-менеджерах ВСЕХ учётных записей /home/* (systemctl --user
-             от root напрямую невозможен; цикл, а не только X-пользователь:
-             под юнитом может быть больше одного экземпляра krfb).
-        Затем pkill -x krfb (может быть запущен вне юнита). Если krfb на
-        хосте нет вовсе (нет бинарника, юнита и процесса) - не делаем ничего.
-        """
-        # Есть ли krfb вообще: бинарник / user unit / процесс.
-        code, out, _ = run_cmd(
-            "command -v krfb >/dev/null && echo KRFBI || true; "
-            "test -f /etc/systemd/user/krfb-dno.service -o "
-            "-f /etc/systemd/user/app-org.kde.krfb.service && echo UNITI || true; "
-            "pgrep -x krfb >/dev/null && echo PROCI || true; "
-            "ls /etc/systemd/user/*target.wants/krfb-dno.service "
-            "/etc/systemd/user/*target.wants/app-org.kde.krfb.service "
-            "/home/*/.config/systemd/user/*target.wants/krfb-dno.service "
-            "/home/*/.config/systemd/user/*target.wants/app-org.kde.krfb.service "
-            ">/dev/null 2>&1 && echo WANTSI || true"
-        )
-        present = out or ""
-        # Сообщать только о реально включённом или запущенном KRFB: сам
-        # пакет стоит в МОС по умолчанию.
-        was_enabled = "WANTSI" in present
-        if "KRFBI" not in present and "UNITI" not in present and "PROCI" not in present:
-            return
-
-        # 1. Root: снять автозапуск юнита krfb-dno глобально. Первым шагом
-        # и независимо от dnoasuser: даже если user-стоп ниже провалится,
-        # на следующем входе пользователя юнит не поднимется.
-        run_cmd(
-            "systemctl --global disable krfb-dno.service app-org.kde.krfb.service 2>/dev/null; "
-            "rm -f /etc/systemd/user/*target.wants/krfb-dno.service "
-            "/etc/systemd/user/*target.wants/app-org.kde.krfb.service; "
-            "rm -f /home/*/.config/systemd/user/*target.wants/krfb-dno.service "
-            "/home/*/.config/systemd/user/*target.wants/app-org.kde.krfb.service; "
-            "true",
-            timeout=30,
-        )
-
-        # 2. Best-effort: stop + disable + daemon-reload в user-менеджерах
-        # всех учётных записей. Ошибка цикла (отказ setpriv/runuser на
-        # учётках с pam_limits) не валит функцию: pkill ниже убьёт процесс,
-        # а авто-restart Restart=always невозможен - юнит больше не в wants.
-        stop_cmd = (
-            _as_user_func() + "; for h in /home/*/; do u=$(basename $h); "
-            'dnoasuser "$u" bash -c '
-            "'systemctl --user stop krfb-dno.service app-org.kde.krfb.service 2>/dev/null; "
-            "systemctl --user disable krfb-dno.service app-org.kde.krfb.service 2>/dev/null; "
-            "systemctl --user daemon-reload 2>/dev/null; true' "
-            "2>/dev/null; done; true"
-        )
-        code, out, err = run_cmd(stop_cmd, timeout=60)
-        if code != 0:
-            # SSH-таймаут или сбой канала - фиксируем в лог и продолжаем.
-            log(
-                f"krfb: не удалось остановить user-юниты ({err or out or '?'}), "
-                "продолжаю через pkill"
-            )
-        code, out, _ = run_cmd(
-            "pgrep -x krfb >/dev/null && echo ACTIVE || echo INACTIVE"
-        )
-        if (out or "").strip() == "ACTIVE":
-            run_cmd("pkill -x krfb 2>/dev/null; sleep 1; true", timeout=15)
-            code2, out2, _ = run_cmd(
-                "pgrep -x krfb >/dev/null && echo ACTIVE || echo INACTIVE"
-            )
-            if (out2 or "").strip() == "ACTIVE":
-                log("WARNING: не удалось остановить krfb")
-            else:
-                log(
-                    "Обнаружен другой вариант общего экрана (krfb) - остановлен и снят с автозапуска"
-                )
-        elif was_enabled:
-            log("Обнаружен другой вариант общего экрана (krfb) - снят с автозапуска")
-
-    def _shutdown_legacy_x11vnc(self, run_cmd, log) -> None:
-        """Остановить x11vnc (старый бекенд) перед установкой krfb.
-
-        Только стоп + disable (юнит/конфиги/пароль /etc/x11vnc не удаляются).
-        """
-        code, out, err = run_cmd("systemctl is-active x11vnc")
-        active = code == 0 and (out or "").strip() == "active"
-        # is-enabled: код 0 для enabled/alias/... состояний.
-        code2, out2, _ = run_cmd("systemctl is-enabled x11vnc 2>/dev/null")
-        enabled = code2 == 0 and bool((out2 or "").strip())
-        if not active and not enabled:
-            return
-        run_cmd(
-            "systemctl stop x11vnc.service 2>/dev/null; "
-            "systemctl disable x11vnc.service 2>/dev/null; true",
-            timeout=30,
-        )
-        verb = "остановлен и снят с автозапуска" if active else "снят с автозапуска"
-        log(f"Обнаружен другой вариант общего экрана (x11vnc) - {verb}")
-
-    def _shutdown_kmsvnc(self, run_cmd, log) -> None:
-        """Остановить kmsvnc и снять с автозапуска перед другим бекендом.
-
-        ``Conflicts=x11vnc`` останавливает kmsvnc при запуске x11vnc, но не
-        выключает: после перезагрузки поднялись бы обе службы. Пакет и
-        настройки остаются, вернуть можно повторной установкой kmsvnc.
-        """
-        code, out, _ = run_cmd(
-            "systemctl is-enabled kmsvnc.service 2>/dev/null; "
-            "systemctl is-active kmsvnc.service 2>/dev/null; true",
-            timeout=15,
-        )
-        states = (out or "").split()
-        if not ({"enabled", "active", "activating"} & set(states)):
-            return
-        run_cmd(
-            "systemctl disable --now kmsvnc.service 2>/dev/null; true", timeout=30
-        )
-        log("Обнаружен другой вариант общего экрана (kmsvnc) - остановлен и снят с автозапуска")
-
     def _disable_stock_krfb_unit(self, run_cmd, log) -> None:
         """Погасить дистрибутивный user unit krfb.service (конкурент krfb-dno).
 
@@ -225,7 +100,6 @@ class VncOperations(InstallerContext):
         )
         if "PRESENT" not in (out or ""):
             return
-        self._shutdown_legacy_krfb(run_cmd, log)
         script = (
             _as_user_func() + "; "
             "rm -f /etc/systemd/user/krfb-dno.service /etc/systemd/user/app-org.kde.krfb.service "
