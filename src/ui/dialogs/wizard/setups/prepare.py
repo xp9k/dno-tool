@@ -51,8 +51,8 @@ class PrepareDevicesPage(SetupPage):
         outer.addWidget(
             hint_label(
                 "Для устройств с заводским образом: вход под учётной записью с sudo "
-                "(например, teacher), создание учётных записей, пароль и ключ root, "
-                "снятие запрета входа root в /etc/ssh/denyusers.\n"
+                "(например, teacher), создание учётных записей, пароль и ключи root, "
+                "по галочке - разрешение входа root по SSH.\n"
                 "Подготовка выполняется на шаге «Установка» первой. Остальные "
                 "сервисы хоста ставятся уже под связкой для подготовленных хостов; "
                 "если подготовка не удалась, хост пропускается."
@@ -137,6 +137,16 @@ class PrepareDevicesPage(SetupPage):
         accounts_layout.addLayout(buttons)
         layout.addWidget(accounts_box)
 
+        # Отзыв прав у заводской учётки (например, teacher): исключение из
+        # групп wheel и sudo последним шагом подготовки.
+        self._revoke_check = QCheckBox(body)
+        self._revoke_check.setToolTip(
+            "Учётная запись входа для подготовки исключается из групп wheel и sudo "
+            "последним шагом подготовки. Если права выданы записью в /etc/sudoers "
+            "или /etc/sudoers.d, отчёт хоста предупредит об этом."
+        )
+        layout.addWidget(self._revoke_check)
+
         # --- root ---
         root_box = QGroupBox("root")
         root_layout = QVBoxLayout(root_box)
@@ -184,8 +194,9 @@ class PrepareDevicesPage(SetupPage):
         permit_row = QHBoxLayout()
         self._permit_check = QCheckBox("Разрешить вход root по SSH:", root_box)
         self._permit_check.setToolTip(
-            "PermitRootLogin в /etc/ssh/sshd_config и root из DenyUsers. "
-            "Конфигурация проверяется sshd -T, при ошибке возвращается прежняя."
+            "PermitRootLogin в /etc/ssh/sshd_config, root убирается из DenyUsers и "
+            "из /etc/ssh/denyusers. Конфигурация проверяется sshd -T, при ошибке "
+            "возвращается прежняя, denyusers тогда не меняется."
         )
         self._permit_combo = QComboBox(root_box)
         for value, label in PERMIT_CHOICES:
@@ -201,6 +212,8 @@ class PrepareDevicesPage(SetupPage):
 
         self._ctx = None
         self._global_selector.changed.connect(self._on_global_changed)
+        self._connect_selector.changed.connect(self._on_connect_changed)
+        self._update_revoke_label("")
         self._key_error = ""
 
     # --- учётные записи ---
@@ -317,6 +330,23 @@ class PrepareDevicesPage(SetupPage):
         if self._ctx is not None:
             self._ctx.ssh.bundle_iid = iid or ""
             self._update_inherit_labels(self._ctx)
+            self._update_revoke_label(self._connect_login(self._ctx))
+
+    def _on_connect_changed(self, _iid) -> None:
+        if self._ctx is not None:
+            self._update_revoke_label(self._connect_login(self._ctx))
+
+    def _connect_login(self, ctx) -> str:
+        """Логин связки входа для подготовки (с учётом наследования)."""
+        iid = self._connect_selector.current_iid() or self._global_bundle_iid(ctx)
+        bundle = next((b for b in ctx.credentials.bundles if b.iid == iid), None)
+        return (bundle.login or "root") if bundle else ""
+
+    def _update_revoke_label(self, login: str) -> None:
+        self._revoke_check.setText(
+            "Отозвать права администратора у текущей учётной записи входа"
+            + (f" ({login})" if login else " (связка входа не выбрана)")
+        )
 
     @staticmethod
     def _global_bundle_iid(ctx) -> str:
@@ -339,6 +369,7 @@ class PrepareDevicesPage(SetupPage):
             selector.refresh()
         self._global_selector.set_current_iid(ctx.ssh.bundle_iid or None)
         self._update_inherit_labels(ctx)
+        self._update_revoke_label(self._connect_login(ctx))
         self._reload_keys()
 
     def collect(self, ctx) -> None:
@@ -360,6 +391,7 @@ class PrepareDevicesPage(SetupPage):
                 self._permit_combo.currentData() if self._permit_check.isChecked() else ""
             ),
             after_bundle_iid=self._after_selector.current_iid() or "",
+            revoke_admin=self._revoke_check.isChecked(),
         )
 
     def validate(self, ctx) -> tuple:
@@ -382,11 +414,22 @@ class PrepareDevicesPage(SetupPage):
         except ValueError as error:
             return False, str(error)
         after = bundles[ctx.prepare.after_bundle_iid or default_iid]
-        if (after[0] or "root") == "root" and not ctx.prepare.permit_root:
+        after_login = after[0] or "root"
+        if ctx.prepare.revoke_admin and after_login != "root" and not any(
+            a.login == after_login and a.admin for a in ctx.prepare.accounts
+        ):
+            return True, (
+                f"Права администратора у «{self._connect_login(ctx)}» отзываются, а "
+                f"связка для записей хостов входит под «{after_login}»: её нет среди "
+                "учётных записей с флажком sudo. Если у неё на хостах нет прав sudo, "
+                "остальные сервисы не установятся."
+            )
+        if after_login == "root" and not ctx.prepare.permit_root:
             return True, (
                 "Связка после подготовки входит под root, а вход root по SSH на "
-                "этом шаге не разрешается: если PermitRootLogin на хостах "
-                "запрещает его, проверочный вход не пройдёт и хосты будут пропущены."
+                "этом шаге не разрешается: если на хостах root указан в "
+                "/etc/ssh/denyusers или PermitRootLogin запрещает его, проверочный "
+                "вход не пройдёт и хосты будут пропущены."
             )
         return True, ""
 
@@ -406,7 +449,9 @@ class PrepareDevicesPage(SetupPage):
             f"пароль root: {'меняется' if plan.root_password else 'не меняется'}; "
             f"ключей root: {len(plan.root_keys)}; "
             f"вход root по SSH: {permit}; "
-            f"связка после: «{escape(names.get(plan.after_bundle_iid, '—'))}»"
+            + (f"права администратора у «{escape(self._connect_login(ctx))}» отзываются; "
+               if plan.revoke_admin else "")
+            + f"связка после: «{escape(names.get(plan.after_bundle_iid, '—'))}»"
         )
         prepared = len(ctx.install_result.bundle_assignments)
         if prepared:

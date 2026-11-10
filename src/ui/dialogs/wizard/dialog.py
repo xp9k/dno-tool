@@ -52,7 +52,7 @@ class SetupWizardDialog(QDialog):
         super().__init__(parent)
         self.setSizeGripEnabled(True)
         self.setWindowTitle("Мастер настройки DNO Tool")
-        self.resize(960, 660)
+        self.resize(960, 760)
         self.setMinimumSize(760, 520)
 
         # main_window сохраняется вызывателями, но мастер его не читает -

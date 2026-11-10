@@ -178,6 +178,8 @@ try:
     root_password = data["root_password"]
     root_keys = [str(key).strip() for key in data["root_keys"]]
     permit = str(data.get("permit_root") or "")
+    # Учётная запись входа, у которой отзываются права администратора.
+    revoke = str(data.get("revoke_admin") or "")
 except (ValueError, KeyError, TypeError):
     finish(False, "Не удалось прочитать параметры подготовки")
 
@@ -224,6 +226,17 @@ if permit not in ("", "prohibit-password", "yes"):
 sshd = sshd_binary()
 if permit and (sshd is None or not os.path.isfile(SSHD_CONFIG)):
     finish(False, "Не найден sshd или " + SSHD_CONFIG)
+if revoke:
+    if not LOGIN_RE.match(revoke) or revoke == "root":
+        finish(False, "Недопустимая учётная запись для отзыва прав «" + revoke + "»")
+    if revoke in [login for login, _, admin in accounts if admin]:
+        finish(False, "«" + revoke + "» указана и для выдачи, и для отзыва прав sudo")
+    try:
+        revoke_entry = pwd.getpwnam(revoke)
+    except KeyError:
+        finish(False, "Учётной записи «" + revoke + "» для отзыва прав на хосте нет")
+    if shutil.which("gpasswd") is None:
+        finish(False, "На хосте нет программы gpasswd")
 
 # ---- учётные записи и пароли ----
 for login, _, admin in accounts:
@@ -277,19 +290,13 @@ if root_keys:
         + str(len(root_keys) - len(added))
     )
 
-# ---- /etc/ssh/denyusers ----
-if os.path.isfile(DENYUSERS):
-    old = read_text(DENYUSERS)
-    kept = [line for line in old.splitlines(True) if line.strip() != "root"]
-    if len(kept) != len(old.splitlines(True)):
-        replace_text(DENYUSERS, "".join(kept))
-        messages.append("root убран из " + DENYUSERS)
-    else:
-        messages.append("В " + DENYUSERS + " root не указан")
-else:
-    messages.append("Файла " + DENYUSERS + " нет")
+def denyusers_has_root():
+    if not os.path.isfile(DENYUSERS):
+        return False
+    return any(line.strip() == "root" for line in read_text(DENYUSERS).splitlines())
 
-# ---- PermitRootLogin ----
+
+# ---- PermitRootLogin и /etc/ssh/denyusers (только с разрешением входа root) ----
 if permit:
     original = read_text(SSHD_CONFIG)
     dropin_existed = os.path.exists(DROPIN)
@@ -328,6 +335,55 @@ if permit:
     if not reloaded:
         finish(False, "sshd_config изменён, но перезагрузить sshd не удалось")
     messages.append("Вход root по SSH: PermitRootLogin " + permit)
+    # denyusers - после успешной смены sshd_config: при откате выше файл
+    # остаётся нетронутым.
+    if os.path.isfile(DENYUSERS):
+        old = read_text(DENYUSERS)
+        kept = [line for line in old.splitlines(True) if line.strip() != "root"]
+        if len(kept) != len(old.splitlines(True)):
+            replace_text(DENYUSERS, "".join(kept))
+            messages.append("root убран из " + DENYUSERS)
+        else:
+            messages.append("В " + DENYUSERS + " root не указан")
+    else:
+        messages.append("Файла " + DENYUSERS + " нет")
+elif denyusers_has_root():
+    warnings.append("root указан в " + DENYUSERS + ": вход root по SSH закрыт")
+
+# ---- отзыв прав администратора (последним: подготовка идёт через sudo этой записи) ----
+if revoke:
+    removed = []
+    for name in ("wheel", "sudo"):
+        try:
+            group = grp.getgrnam(name)
+        except KeyError:
+            continue
+        if group.gr_gid == revoke_entry.pw_gid:
+            warnings.append(
+                "Группа " + name + " - основная у «" + revoke + "», исключить из неё нельзя"
+            )
+        elif revoke in group.gr_mem:
+            run(["gpasswd", "-d", revoke, name])
+            removed.append(name)
+    if removed:
+        messages.append(
+            "Права администратора у «" + revoke + "» отозваны: исключена из групп "
+            + ", ".join(removed)
+        )
+    else:
+        messages.append("«" + revoke + "» не состоит в группах wheel и sudo")
+    # Права могут быть выданы и записью в /etc/sudoers или /etc/sudoers.d.
+    if shutil.which("sudo"):
+        check = subprocess.run(
+            ["sudo", "-n", "-l", "-U", revoke], stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, universal_newlines=True,
+            env=dict(os.environ, LC_ALL="C", LANG="C"),
+        )
+        if check.returncode == 0 and "may run the following" in check.stdout:
+            warnings.append(
+                "У «" + revoke + "» остались права sudo из /etc/sudoers или "
+                "/etc/sudoers.d: проверьте их вручную"
+            )
 
 # ---- предупреждения о настройках sshd, которые не менялись ----
 values = sshd_effective(sshd) if sshd else None

@@ -280,9 +280,9 @@ class RemoteServiceInstallerWorker(BaseWorker):
         связки — временно резолвим выбранную связку напрямую.
         SSH-ключ (private_key) резолвится как раньше.
 
-        С подготовкой: стадия "prepare" - связка входа для подготовки без
-        ключа (на заводском хосте его нет), "after" - связка для
-        подготовленных хостов и выбранный ключ; по умолчанию - текущая стадия
+        С подготовкой: стадия "prepare" - связка входа для подготовки,
+        "after" - связка для подготовленных хостов; у обеих выбранный ключ и
+        пароль связки, если есть (как у обычного входа); по умолчанию - стадия
         хоста.
         """
         stage = stage or self._stage(device)
@@ -297,11 +297,11 @@ class RemoteServiceInstallerWorker(BaseWorker):
             chosen = self._bundle(iid or self._global_bundle_iid())
             if chosen is None:
                 raise ValueError("Связка подготовки не найдена в плане")
-            key = None
-            if stage == "after":
-                key = get_credentials(
-                    device, key_path=self.ssh_private_key_path or None
-                ).private_key
+            # Ключ - как у обычного входа: доступ по ключу может быть уже
+            # настроен, пароль связки тогда не нужен.
+            key = get_credentials(
+                device, key_path=self.ssh_private_key_path or None
+            ).private_key
             return CredentialsResult(
                 username=chosen[0] or "root", password=chosen[1], private_key=key
             )
@@ -522,13 +522,6 @@ class RemoteServiceInstallerWorker(BaseWorker):
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             if self._local_abort.is_set():
                 raise InterruptedError("Setup cancelled")
-            # Подготовка входит только паролем заводской учётки: ключи агента
-            # и ~/.ssh расходовали бы попытки входа (MaxAuthTries).
-            extra = (
-                dict(allow_agent=False, look_for_keys=False)
-                if stage == "prepare"
-                else {}
-            )
             ssh.connect(
                 hostname=device.host,
                 username=creds.username,
@@ -538,14 +531,20 @@ class RemoteServiceInstallerWorker(BaseWorker):
                 timeout=self._ssh_settings.connect_timeout,
                 banner_timeout=self._ssh_settings.connect_timeout,
                 auth_timeout=self._ssh_settings.ssh_connect_timeout,
-                **extra,
             )
             connected = True
         except Exception as e:
             err = f"SSH connection failed: {e}"
             if stage is not None:
                 # Логин и способ входа: иначе не понять, какая связка не подошла.
-                how = "паролем" if stage == "prepare" else "ключом и паролем"
+                how = " и ".join(
+                    part
+                    for part, present in (
+                        ("ключом", creds.private_key is not None),
+                        ("паролем", bool(creds.password)),
+                    )
+                    if present
+                ) or "ключами ~/.ssh и агента"
                 when = "для подготовки" if stage == "prepare" else "после подготовки"
                 err = (
                     f"Не удалось подключиться {when} под «{creds.username}» "
@@ -587,10 +586,21 @@ class RemoteServiceInstallerWorker(BaseWorker):
             return out == "PRESENT", error if code else ""
 
         try:
-            code, platform, _ = run_cmd(
+            code, platform, error = run_cmd(
                 "uname -s; test -d /run/systemd/system && command -v systemctl; command -v dnf || command -v apt-get",
                 timeout=10,
             )
+            if code != 0 and error == "PermissionError":
+                # Транспорт: sudo спросил пароль, а в связке его нет.
+                for service in services:
+                    self._report(
+                        device,
+                        service,
+                        RESULT_ERROR,
+                        f"sudo на хосте требует пароль, а в связке «{creds.username}» "
+                        "его нет: укажите пароль в связке или настройте NOPASSWD",
+                    )
+                return False
             if (
                 code != 0
                 or not platform.startswith("Linux\n")

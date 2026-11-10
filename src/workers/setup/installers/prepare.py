@@ -28,6 +28,18 @@ class PrepareInstaller(PhasedInstaller):
         from src.workers.setup.templates import PREPARE_SCRIPT
 
         plan = self.parameters.prepare
+        # Отзыв прав - у той учётной записи, под которой идёт подготовка.
+        revoke = ""
+        if plan.revoke_admin:
+            revoke = self._resolve_credentials(device, stage="prepare").username
+            if revoke == "root":
+                self._report(
+                    device,
+                    self.service,
+                    RESULT_ERROR,
+                    "Вход для подготовки идёт под root: отзывать права не у кого",
+                )
+                return
         payload = json.dumps(
             {
                 "accounts": [
@@ -37,6 +49,7 @@ class PrepareInstaller(PhasedInstaller):
                 "root_password": plan.root_password,
                 "root_keys": list(plan.root_keys),
                 "permit_root": plan.permit_root,
+                "revoke_admin": revoke,
             },
             ensure_ascii=False,
         )
