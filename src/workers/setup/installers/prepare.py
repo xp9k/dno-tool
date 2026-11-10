@@ -11,7 +11,7 @@ import threading
 import time
 
 from src.workers.setup.phases import PhasedInstaller, PhaseResult
-from src.workers.setup.types import RESULT_ERROR, RESULT_SUCCESS
+from src.workers.setup.types import RESULT_ERROR, RESULT_SUCCESS, check_prepare_logins
 
 # sshd после reload несколько долей секунды не принимает подключения.
 VERIFY_ATTEMPTS = 3
@@ -28,26 +28,31 @@ class PrepareInstaller(PhasedInstaller):
         from src.workers.setup.templates import PREPARE_SCRIPT
 
         plan = self.parameters.prepare
+        # Связка входа может быть своей у каждого хоста: проверки, зависящие
+        # от логина, - здесь, с фактическими логинами входа и «после».
+        connect_login = self._resolve_credentials(device, stage="prepare").username
+        after_login = self._resolve_credentials(device, stage="after").username
+        try:
+            check_prepare_logins(plan, connect_login, after_login)
+        except ValueError as error:
+            self._report(device, self.service, RESULT_ERROR, str(error))
+            return
         # Отзыв прав - у той учётной записи, под которой идёт подготовка.
-        revoke = ""
-        if plan.revoke_admin:
-            revoke = self._resolve_credentials(device, stage="prepare").username
-            if revoke == "root":
-                self._report(
-                    device,
-                    self.service,
-                    RESULT_ERROR,
-                    "Вход для подготовки идёт под root: отзывать права не у кого",
-                )
-                return
+        revoke = connect_login if plan.revoke_admin else ""
         payload = json.dumps(
             {
                 "accounts": [
-                    {"login": a.login, "password": a.password, "admin": a.admin}
+                    {
+                        "login": a.login,
+                        "password": a.password,
+                        "admin": a.admin,
+                        "nopasswd": a.nopasswd,
+                    }
                     for a in plan.accounts
                 ],
                 "root_password": plan.root_password,
-                "root_keys": list(plan.root_keys),
+                "keys": list(plan.keys),
+                "key_users": list(plan.key_users),
                 "permit_root": plan.permit_root,
                 "revoke_admin": revoke,
             },
@@ -72,7 +77,7 @@ class PrepareInstaller(PhasedInstaller):
                 self.service,
                 RESULT_ERROR,
                 "Скрипт подготовки не выполнен с правами root: проверьте python3 "
-                "на хосте, sudo и пароль связки входа",
+                "на хосте, sudo и пароль связки для подключения",
             )
             return
         # Подробный отчёт - в результате сервиса (подробности хоста), в общий

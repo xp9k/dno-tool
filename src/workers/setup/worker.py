@@ -287,16 +287,28 @@ class RemoteServiceInstallerWorker(BaseWorker):
         """
         stage = stage or self._stage(device)
         if stage is not None:
-            iid = (
-                self.prepare.connect_bundle_iid
-                if stage == "prepare"
-                else self.prepare.after_bundle_iid
-            )
-            # Пустой iid - наследовать глобальную связку; своя связка хоста не
-            # учитывается: после подготовки запись хоста её теряет.
-            chosen = self._bundle(iid or self._global_bundle_iid())
-            if chosen is None:
-                raise ValueError("Связка подготовки не найдена в плане")
+            if stage == "prepare":
+                # Пустой вход - своя связка хоста (колонка шага «Хосты»),
+                # иначе глобальная.
+                iid = self.prepare.connect_bundle_iid
+                chosen = self._bundle(iid) if iid else (
+                    self._bundle(getattr(device, "credential_bundle_iid", None))
+                    or self._bundle(self._global_bundle_iid())
+                )
+                if chosen is None:
+                    raise ValueError(
+                        "Связка входа для подготовки не найдена"
+                        if iid
+                        else "У хоста нет своей связки, а связка по умолчанию не задана"
+                    )
+            else:
+                # Пустой iid - глобальная связка; своя связка хоста не
+                # учитывается: после подготовки запись хоста её теряет.
+                chosen = self._bundle(
+                    self.prepare.after_bundle_iid or self._global_bundle_iid()
+                )
+                if chosen is None:
+                    raise ValueError("Связка для подготовленных хостов не найдена")
             # Ключ - как у обычного входа: доступ по ключу может быть уже
             # настроен, пароль связки тогда не нужен.
             key = get_credentials(
@@ -354,9 +366,12 @@ class RemoteServiceInstallerWorker(BaseWorker):
         """use_sudo: хост → общее значение мастера → конфиг."""
         from src.workers.command.sudo_utils import should_use_sudo
 
-        # С подготовкой вход не под root всегда идёт через sudo: заводская
-        # учётка - администратор, учётке «после» права проверены на шаге.
+        # С подготовкой вход не под root для подготовки всегда идёт через
+        # sudo (заводская учётка - администратор); для остальных сервисов
+        # решает галочка «Использовать sudo» связки «после».
         if self.prepare is not None:
+            if self._stage(device) == "after":
+                return bool(self.prepare.after_use_sudo)
             return True
         if getattr(device, "use_sudo", None) is not None:
             return bool(device.use_sudo)
@@ -453,8 +468,9 @@ class RemoteServiceInstallerWorker(BaseWorker):
                 # Остальные сервисы - новое подключение под связкой
                 # для подготовленных хостов.
                 self._stages[device.iid] = "after"
-            if not self._run_installers(device, group, operation_context):
-                return
+            # Неудача группы подготовки не выходит из цикла: следующая группа
+            # получит «Пропущено» с причиной, а не общий итог «не завершилась».
+            self._run_installers(device, group, operation_context)
 
     def _run_installers(self, device, descriptors, operation_context) -> bool:
         """Одно SSH-подключение и установщики группы; False - не подключились.
@@ -470,14 +486,15 @@ class RemoteServiceInstallerWorker(BaseWorker):
         stage = self._stage(device)
         try:
             creds = self._resolve_credentials(device)
-        except Exception:
+        except Exception as error:
+            # Текст ValueError составлен для пользователя (какой связки нет).
+            message = (
+                str(error)
+                if isinstance(error, ValueError) and str(error)
+                else "Не удалось разрешить выбранную связку"
+            )
             for svc in services:
-                self._report(
-                    device,
-                    svc,
-                    RESULT_ERROR,
-                    "Не удалось разрешить выбранную связку",
-                )
+                self._report(device, svc, RESULT_ERROR, message)
             return False
         port = device.port or self._ssh_settings.port
 
@@ -590,22 +607,34 @@ class RemoteServiceInstallerWorker(BaseWorker):
                 "uname -s; test -d /run/systemd/system && command -v systemctl; command -v dnf || command -v apt-get",
                 timeout=10,
             )
-            if code != 0 and error == "PermissionError":
+            sudo_problem = {
                 # Транспорт: sudo спросил пароль, а в связке его нет.
+                "PermissionError": (
+                    f"sudo на хосте требует пароль, а в связке «{creds.username}» "
+                    "его нет: укажите пароль в связке или настройте NOPASSWD"
+                ),
+                # Вход мог пройти по ключу, поэтому неверный пароль связки
+                # обнаруживается только здесь.
+                "SudoPasswordRejected": (
+                    f"sudo на хосте отклонил пароль связки «{creds.username}»: "
+                    "укажите в связке пароль этой учётной записи на хосте"
+                ),
+            }.get(error) if code != 0 else None
+            if sudo_problem:
+                for service in services:
+                    self._report(device, service, RESULT_ERROR, sudo_problem)
+                return False
+            if code != 0:
+                detail = error.splitlines()[-1] if error else f"код {code}"
                 for service in services:
                     self._report(
                         device,
                         service,
                         RESULT_ERROR,
-                        f"sudo на хосте требует пароль, а в связке «{creds.username}» "
-                        "его нет: укажите пароль в связке или настройте NOPASSWD",
+                        f"Не удалось проверить систему хоста: {detail}",
                     )
                 return False
-            if (
-                code != 0
-                or not platform.startswith("Linux\n")
-                or "systemctl" not in platform
-            ):
+            if not platform.startswith("Linux\n") or "systemctl" not in platform:
                 for service in services:
                     self._report(
                         device,

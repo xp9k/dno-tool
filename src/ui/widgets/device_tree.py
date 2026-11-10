@@ -302,15 +302,21 @@ class CustomTreeItem(QStandardItem):
             return cols
 
     @staticmethod
-    def _bundle_label(bundle_iid) -> str:
-        """Описание связки по iid для отображения в колонке. None = «(наследовать)»."""
+    def _bundle_label(bundle_iid, service=None) -> str:
+        """Описание связки по iid для отображения в колонке. None = «(наследовать)».
+
+        service - откуда брать связки (у мастера - черновик); по умолчанию
+        CredentialService из DI.
+        """
         if not bundle_iid:
             return _BUNDLE_INHERIT_LABEL
         try:
-            from src.di import get_container
-            from src.services.configuration.credential_service import CredentialService
+            svc = service
+            if svc is None:
+                from src.di import get_container
+                from src.services.configuration.credential_service import CredentialService
 
-            svc = get_container().resolve_optional(CredentialService)
+                svc = get_container().resolve_optional(CredentialService)
             if svc is not None:
                 b = svc.get_bundle_by_iid(bundle_iid)
                 if b is not None:
@@ -3100,6 +3106,36 @@ class DeviceTreeView(QTreeView):
 
     def export_tree_data(self):
         return self._model.export_tree_data()
+
+    def refresh_bundle_labels(self, service=None) -> None:
+        """Перечитать подписи колонки «Связка» по iid из service.
+
+        Нужно, когда связки меняются в другом окне (переименование, удаление)
+        или берутся не из CredentialService (черновик мастера).
+        """
+        if not self.show_columns:
+            return
+        model = self._model
+        blocked = model.blockSignals(True)
+        try:
+            stack = [model.invisibleRootItem()]
+            while stack:
+                parent = stack.pop()
+                for row in range(parent.rowCount()):
+                    item0 = parent.child(row, 0)
+                    if item0 is None:
+                        continue
+                    if item0.hasChildren():
+                        stack.append(item0)
+                    cell = parent.child(row, COL_BUNDLE)
+                    if cell is None or getattr(item0, "device", None) is None:
+                        continue
+                    cell.setText(
+                        CustomTreeItem._bundle_label(cell.data(BUNDLE_DATAROLE), service)
+                    )
+        finally:
+            model.blockSignals(blocked)
+        self.viewport().update()
 
     def get_tree_data(self):
         return self._model.export_tree_data()

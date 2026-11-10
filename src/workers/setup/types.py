@@ -15,11 +15,16 @@ PERMIT_ROOT_MODES = ("", "prohibit-password", "yes")
 
 @dataclass(frozen=True)
 class PrepareAccount:
-    """Учётная запись, которую подготовка создаёт на хосте."""
+    """Учётная запись, которую подготовка создаёт на хосте.
+
+    admin - группа wheel (или sudo); nopasswd - вдобавок правило в
+    /etc/sudoers.d: sudo без пароля (только вместе с admin).
+    """
 
     login: str
     password: str = field(default="", repr=False)
     admin: bool = False
+    nopasswd: bool = False
 
 
 @dataclass(frozen=True)
@@ -32,19 +37,24 @@ class PreparePlan:
     Пустой iid связки - наследовать глобальную (связку по умолчанию); записи
     хостов тогда остаются без своей связки.
     root_password: "" - пароль root не менять.
-    root_keys - открытые ключи для root, выбранные на шаге «Подготовка».
+    keys - открытые ключи (из ~/.ssh), выбранные на шаге «Подготовка»;
+    key_users - учётные записи, в authorized_keys которых они добавляются.
     permit_root: "" - не менять sshd_config, иначе значение PermitRootLogin.
     revoke_admin - исключить учётную запись входа для подготовки из групп
     wheel и sudo (последним шагом подготовки).
+    after_use_sudo - остальные сервисы под связкой «после» (не root) идут
+    через sudo. Подготовка под учётной записью не root - всегда через sudo.
     """
 
     connect_bundle_iid: str = ""
     accounts: tuple = ()
     root_password: str = field(default="", repr=False)
-    root_keys: tuple = ()
+    keys: tuple = ()
+    key_users: tuple = ()
     permit_root: str = ""
     after_bundle_iid: str = ""
     revoke_admin: bool = False
+    after_use_sudo: bool = True
 
     def __post_init__(self):
         object.__setattr__(
@@ -55,7 +65,8 @@ class PreparePlan:
                 for item in self.accounts
             ),
         )
-        object.__setattr__(self, "root_keys", tuple(self.root_keys))
+        object.__setattr__(self, "keys", tuple(self.keys))
+        object.__setattr__(self, "key_users", tuple(self.key_users))
 
 
 def _check_secret(value, label):
@@ -70,7 +81,8 @@ def validate_prepare(plan, bundles=None, default_iid=""):
 
     bundles - {iid: (login, password)}; без него связки не проверяются
     (worker проверяет их при подключении). default_iid - глобальная связка,
-    которой заменяется пустой iid («наследовать глобальную»).
+    которой заменяется пустой iid «после» («наследовать глобальную»); пустой
+    вход - своя связка хоста, иначе глобальная.
     """
     if not isinstance(plan, PreparePlan):
         raise ValueError("Параметры подготовки не заданы")
@@ -88,72 +100,70 @@ def validate_prepare(plan, bundles=None, default_iid=""):
             raise ValueError(f"Учётная запись «{login}» указана дважды")
         seen.add(login)
         _check_secret(account.password, f"Учётная запись «{login}»")
-        if type(account.admin) is not bool:
+        if type(account.admin) is not bool or type(account.nopasswd) is not bool:
             raise ValueError("Некорректный признак sudo")
+        if account.nopasswd and not account.admin:
+            raise ValueError(
+                f"Учётная запись «{login}»: sudo без пароля - только вместе с флажком sudo"
+            )
     # Пустой пароль root - не менять.
     if plan.root_password:
         _check_secret(plan.root_password, "root")
-    for key in plan.root_keys:
+    for key in plan.keys:
         if not isinstance(key, str) or "\n" in key or not PREPARE_KEY_RE.fullmatch(key):
             raise ValueError("Выбранный ключ не похож на открытый SSH-ключ")
+    users = set()
+    for login in plan.key_users:
+        if not isinstance(login, str) or not (
+            login == "root" or PREPARE_LOGIN_RE.fullmatch(login)
+        ):
+            raise ValueError(f"Недопустимое имя учётной записи для ключей «{login}»")
+        if login in users:
+            raise ValueError(f"Учётная запись для ключей «{login}» указана дважды")
+        users.add(login)
+    if plan.keys and not plan.key_users:
+        raise ValueError("Отметьте учётные записи, которым добавить ключи")
+    if plan.key_users and not plan.keys:
+        raise ValueError("Отметьте ключи, которые добавить учётным записям")
     # Пустой набор допустим: подготовка проверяет вход, и записи хостов
     # получают связку для подготовленных.
     if plan.permit_root not in PERMIT_ROOT_MODES:
         raise ValueError("Неизвестный режим входа root")
     if type(plan.revoke_admin) is not bool:
         raise ValueError("Некорректный признак отзыва прав")
+    if type(plan.after_use_sudo) is not bool:
+        raise ValueError("Некорректный признак sudo после подготовки")
     if bundles is None:
         return
-    if not (default_iid and default_iid in bundles):
-        fields = [
-            label
-            for label, iid in (
-                ("«Вход для подготовки»", plan.connect_bundle_iid),
-                ("«Связка для записей хостов»", plan.after_bundle_iid),
-            )
-            if not iid
-        ]
-        if fields:
-            raise ValueError(
-                f"{' и '.join(fields)}: выбрано «наследовать глобальную», но связка "
-                "по умолчанию не задана. Выберите связку в списке или задайте связку "
-                "по умолчанию на шаге «SSH-ключи»."
-            )
-    connect = bundles.get(plan.connect_bundle_iid or default_iid)
-    if connect is None:
-        raise ValueError("Выберите связку для входа при подготовке")
-    if not connect[0]:
-        raise ValueError("В связке для входа при подготовке не указан логин")
+    # Пустой вход - своя связка хоста, иначе глобальная: логин известен
+    # только для каждого хоста, проверяет worker (check_prepare_logins).
+    if not plan.after_bundle_iid and not (default_iid and default_iid in bundles):
+        raise ValueError(
+            "«Связка после подготовки»: выбрано «наследовать глобальную», но "
+            "связка по умолчанию не задана. Выберите связку в списке или задайте "
+            "связку по умолчанию на шаге «Хосты»."
+        )
+    connect_login = None
+    if plan.connect_bundle_iid:
+        connect = bundles.get(plan.connect_bundle_iid)
+        if connect is None:
+            raise ValueError("Выберите связку для входа при подготовке")
+        connect_login = connect[0]
     # Пароль не обязателен: вход может быть по ключу, sudo - без пароля
     # (NOPASSWD). Если sudo его спросит, установка сообщит об этом.
     after = bundles.get(plan.after_bundle_iid or default_iid)
     if after is None:
-        raise ValueError("Выберите связку для записей хостов после подготовки")
+        raise ValueError("Выберите связку после подготовки")
     after_login = after[0] or "root"
     for account in plan.accounts:
-        if account.login == after_login and not account.admin:
+        if plan.after_use_sudo and account.login == after_login and not account.admin:
             raise ValueError(
                 f"Связка после подготовки входит под «{after_login}», но этой учётной "
                 "записи не выбраны права sudo: установка сервисов под ней невозможна"
             )
-    if plan.revoke_admin:
-        login = connect[0]
-        if login == "root":
-            raise ValueError(
-                "Вход для подготовки идёт под root: отзывать права администратора не у кого"
-            )
-        if after_login == login:
-            raise ValueError(
-                f"Связка для записей хостов входит под «{login}», у которой отзываются "
-                "права администратора: остальные сервисы ставить будет нечем. "
-                "Выберите другую связку или снимите галочку отзыва прав"
-            )
-        if any(a.login == login and a.admin for a in plan.accounts):
-            raise ValueError(
-                f"«{login}» есть в учётных записях с флажком sudo, а права у неё "
-                "отзываются: оставьте что-то одно"
-            )
-    if after_login == "root" and not plan.root_keys:
+    if connect_login is not None:
+        check_prepare_logins(plan, connect_login, after_login)
+    if after_login == "root" and not root_gets_keys(plan):
         if plan.permit_root == "prohibit-password":
             raise ValueError(
                 "Вход root разрешается только по ключу, но ключ root не добавляется"
@@ -164,6 +174,37 @@ def validate_prepare(plan, bundles=None, default_iid=""):
                 "не совпадает с новым паролем root, а ключ root не добавляется"
             )
 
+
+def root_gets_keys(plan) -> bool:
+    """Подготовка добавляет ключи в authorized_keys root."""
+    return bool(plan.keys) and "root" in plan.key_users
+
+
+def check_prepare_logins(plan, connect_login, after_login):
+    """Проверки, зависящие от логина входа для подготовки; ValueError.
+
+    Вызывается страницей при явно выбранной связке входа и worker-ом для
+    каждого хоста (при наследовании у хостов могут быть разные связки).
+    """
+    if not connect_login:
+        raise ValueError("В связке для входа при подготовке не указан логин")
+    if not plan.revoke_admin:
+        return
+    if connect_login == "root":
+        raise ValueError(
+            "Связка для подключения входит под root: отзывать права администратора не у кого"
+        )
+    if (after_login or "root") == connect_login:
+        raise ValueError(
+            f"Связка после подготовки входит под «{connect_login}», у которой "
+            "отзываются права администратора: остальные сервисы ставить будет нечем. "
+            "Выберите другую связку или снимите галочку отзыва прав"
+        )
+    if any(a.login == connect_login and a.admin for a in plan.accounts):
+        raise ValueError(
+            f"«{connect_login}» есть в учётных записях с флажком sudo, а права у неё "
+            "отзываются: оставьте что-то одно"
+        )
 
 def validate_port(value):
     if type(value) is not int or not 1 <= value <= 65535:

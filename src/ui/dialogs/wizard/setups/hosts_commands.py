@@ -11,8 +11,10 @@ from copy import deepcopy
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -26,10 +28,69 @@ from PySide6.QtWidgets import (
 from src.logger import logger
 from src.ui.icons import _icon_from_key
 from src.ui.dialogs.tools.ip_scanner import IPScannerDialog
+from src.ui.widgets.bundle_selector import BundleSelector, credential_service_for
 from src.ui.widgets.device_tree import DeviceTreeView
 from src.ui.dialogs.wizard.setups.base import SetupPage
 from src.services.configuration.setup_draft import CommandDraft, normalize_tree
 from src.workers.command_download import CommandDownloadWorker
+
+
+# Справка для оператора (кнопка «Логины и пароли»). Порядок должен совпадать
+# с RemoteServiceInstallerWorker._resolve_credentials / _resolve_use_sudo и
+# сохранением мастера (apply_host_bundles).
+CREDENTIALS_HELP_HTML = """
+<h3>Обычная установка</h3>
+<p>Так мастер подключается, если шаг «Подготовка» не выбран.</p>
+<p><b>Логин и пароль</b> для каждого хоста берутся по порядку:</p>
+<ol>
+<li>Связка, выбранная у хоста в колонке «Связка».</li>
+<li>Если у хоста «(наследовать)», то <b>связка по умолчанию</b> из поля над таблицей.</li>
+<li>Если и её нет, вход под <b>root</b> без пароля. Он получится, только если
+на хосте уже есть SSH-ключ этой машины.</li>
+</ol>
+<p>SSH-ключ этой машины (шаг «SSH-ключи») пробуется всегда, вместе с паролем.
+Подойдёт любой из двух способов.</p>
+
+<p><b>sudo</b> нужен, если вход идёт не под root:</p>
+<ol>
+<li>Значение в колонке «Sudo» у хоста: «Да» или «Нет».</li>
+<li>Если там «По умолчанию», решает галочка «Использовать sudo для входа не под root».</li>
+</ol>
+<p>Пароль для sudo тот же, что для входа. Под root sudo не используется.</p>
+
+<h3>С подготовкой</h3>
+<p>Сначала на каждом хосте выполняется подготовка, затем ставится всё остальное.</p>
+
+<p><b>Подготовка</b>, вход под заводской учётной записью:</p>
+<ol>
+<li>Связка в поле «Связка для подключения», если она выбрана.</li>
+<li>Иначе связка хоста из колонки «Связка».</li>
+<li>Иначе связка по умолчанию.</li>
+</ol>
+<p>Если не нашлось ни одной, хост пропускается.</p>
+
+<p><b>Проверочный вход и установка остального</b> (SSH-ключи, Veyon, VNC, пакеты):</p>
+<ol>
+<li>Связка в поле «Связка после подготовки», если она выбрана.</li>
+<li>Иначе связка по умолчанию.</li>
+</ol>
+<p>Связка хоста из таблицы здесь <b>не используется</b>.</p>
+<p>sudo при подготовке включается всегда, если вход не под root: колонка «Sudo»
+и галочка не учитываются. Для установки остального sudo задаёт галочка
+«Использовать sudo» под «Связкой после подготовки» (она видна, если связка входит
+не под root).</p>
+<p>Если подготовка на хосте не удалась, остальное на нём не ставится.</p>
+
+<h3>Что сохранится после «Готово»</h3>
+<ul>
+<li>Хостам, где подготовка прошла, в колонку «Связка» записывается
+«Связка после подготовки». <b>Своя связка хоста заменяется.</b> Если эта связка
+входит не под root, «Sudo» становится «Да» или «Нет» по галочке «Использовать sudo».</li>
+<li>Остальные хосты сохраняются так, как заполнена таблица.</li>
+<li>Связка по умолчанию и галочка sudo сохраняются как общие настройки программы.
+Дальше программа подключается к хостам в том же порядке, что и при обычной установке.</li>
+</ul>
+"""
 
 
 class HostsPage(SetupPage):
@@ -58,6 +119,34 @@ class HostsPage(SetupPage):
         hint.setStyleSheet("color: gray;")
         layout.addWidget(hint)
 
+        # Связка по умолчанию - единственное место в мастере, где она
+        # задаётся: при первом запуске окно связок открывается отсюда.
+        bundle_form = QFormLayout()
+        bundle_form.setContentsMargins(0, 0, 0, 0)
+        self._bundle_selector = BundleSelector(
+            self, allow_none=True, none_label="(нет связки)"
+        )
+        self._bundle_selector.setToolTip(
+            "Логин и пароль для хостов, у которых в колонке «Связка» выбрано "
+            "«(наследовать)».\nКнопка справа открывает окно связок: там их можно "
+            "создать и изменить."
+        )
+        self._bundle_selector.changed.connect(self._on_bundle_changed)
+        bundle_form.addRow(
+            "Связка по умолчанию (логин и пароль для доступа):", self._bundle_selector
+        )
+        # Общая настройка sudo - пара к связке по умолчанию: значение
+        # «По умолчанию» в колонке «Sudo» означает её.
+        self._sudo_check = QCheckBox("Использовать sudo для входа не под root")
+        self._sudo_check.setToolTip(
+            "Для хостов со значением «По умолчанию» в колонке «Sudo». Пароль sudo "
+            "берётся из связки хоста.\n"
+            "При входе под root не нужна. С выбранной «Подготовкой» вход не под "
+            "root на шаге «Установка» всегда идёт через sudo."
+        )
+        bundle_form.addRow(self._sudo_check)
+        layout.addLayout(bundle_form)
+
         btn_row = QHBoxLayout()
         self._scan_btn = QPushButton(_icon_from_key("menu_scanner"), "Сканировать сеть")
         self._scan_btn.clicked.connect(self._open_scanner)
@@ -80,6 +169,15 @@ class HostsPage(SetupPage):
         btn_row.addWidget(self._clear_hosts_btn)
 
         btn_row.addStretch()
+
+        self._help_btn = QPushButton(_icon_from_key("menu_info"), "")
+        self._help_btn.setToolTip(
+            "Логины и пароли: в каком порядке мастер берёт связки и sudo"
+        )
+        self._help_btn.setAccessibleName("Логины и пароли")
+        self._help_btn.clicked.connect(self._show_credentials_help)
+        btn_row.addWidget(self._help_btn)
+
         layout.addLayout(btn_row)
 
         self._hosts_tree = DeviceTreeView(
@@ -90,18 +188,62 @@ class HostsPage(SetupPage):
     # --- контракт SetupPage ---
 
     def on_enter(self, ctx) -> None:
-        pass
+        self._bundle_selector.refresh()
+        self._bundle_selector.set_current_iid(ctx.default_bundle_iid or None)
+        self._sudo_check.setChecked(ctx.use_sudo)
+        self._refresh_bundle_labels()
 
     def collect(self, ctx) -> None:
+        ctx.default_bundle_iid = self._bundle_selector.current_iid() or ""
+        ctx.use_sudo = self._sudo_check.isChecked()
         ctx.hosts_data = normalize_tree(self.get_hosts_data(), "hosts")
 
     def set_data(self, data):
         self._hosts_tree._model.load_tree_data(deepcopy(data))
+        self._refresh_bundle_labels()
 
     def summary_html(self, ctx) -> str:
+        from html import escape
+
         data = ctx.hosts_data if ctx.hosts_data else self.get_hosts_data()
         n = self._count_hosts_in_data(data)
-        return f"<b>Хосты:</b> {n}"
+        bundle = next(
+            (b for b in ctx.credentials.bundles if b.iid == ctx.default_bundle_iid),
+            None,
+        ) if ctx.credentials is not None else None
+        name = (bundle.description or bundle.login) if bundle else "не задана"
+        sudo = "да" if ctx.use_sudo else "нет"
+        return (
+            f"<b>Хосты:</b> {n}; связка по умолчанию: {escape(name)}; "
+            f"sudo по умолчанию: {sudo}"
+        )
+
+    def _show_credentials_help(self) -> None:
+        from PySide6.QtWidgets import QDialogButtonBox, QTextBrowser
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Как мастер выбирает логин и пароль")
+        dialog.resize(620, 640)
+        box = QVBoxLayout(dialog)
+        text = QTextBrowser(dialog)
+        text.setOpenLinks(False)
+        text.setHtml(CREDENTIALS_HELP_HTML)
+        box.addWidget(text, 1)
+        buttons = QDialogButtonBox(dialog)
+        buttons.addButton("Закрыть", QDialogButtonBox.ButtonRole.RejectRole)
+        buttons.rejected.connect(dialog.reject)
+        box.addWidget(buttons)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def _on_bundle_changed(self, _iid) -> None:
+        # Сигнал приходит и после закрытия окна связок: подписи в колонке
+        # могли устареть (переименование, удаление).
+        self._refresh_bundle_labels()
+
+    def _refresh_bundle_labels(self) -> None:
+        # Связки мастера - черновик, а не рабочий CredentialService.
+        self._hosts_tree.refresh_bundle_labels(credential_service_for(self))
 
     # --- публичные данные ---
 
@@ -115,6 +257,7 @@ class HostsPage(SetupPage):
             try:
                 data = device_service.get_devices_raw()
                 self._hosts_tree._model.load_tree_data(data)
+                self._refresh_bundle_labels()
             except Exception as e:
                 logger.error(f"SetupWizard: cannot load existing hosts: {e}")
 

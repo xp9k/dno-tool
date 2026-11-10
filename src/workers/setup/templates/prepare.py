@@ -26,6 +26,8 @@ SSHD_CONFIG = "/etc/ssh/sshd_config"
 DROPIN_DIR = "/etc/ssh/sshd_config.d"
 DROPIN = DROPIN_DIR + "/00-dno-tool-root.conf"
 DENYUSERS = "/etc/ssh/denyusers"
+SUDOERS = "/etc/sudoers"
+SUDOERS_DIR = "/etc/sudoers.d"
 messages = []
 warnings = []
 
@@ -175,8 +177,14 @@ try:
         (str(item["login"]), item["password"], bool(item["admin"]))
         for item in data["accounts"]
     ]
+    # Учётные записи с sudo без пароля (правило в /etc/sudoers.d).
+    nopasswd = [
+        str(item["login"]) for item in data["accounts"] if item.get("nopasswd")
+    ]
     root_password = data["root_password"]
-    root_keys = [str(key).strip() for key in data["root_keys"]]
+    keys = [str(key).strip() for key in data["keys"]]
+    # Учётные записи, в authorized_keys которых добавляются ключи.
+    key_users = [str(login) for login in data["key_users"]]
     permit = str(data.get("permit_root") or "")
     # Учётная запись входа, у которой отзываются права администратора.
     revoke = str(data.get("revoke_admin") or "")
@@ -216,11 +224,21 @@ for login, password, _ in accounts:
         finish(False, "«" + login + "» - системная учётная запись (UID "
                + str(entry.pw_uid) + "), её пароль не меняется")
     existing.add(login)
+if nopasswd:
+    admins = [login for login, _, admin in accounts if admin]
+    for login in nopasswd:
+        if login not in admins:
+            finish(False, "«" + login + "»: sudo без пароля - только вместе с флажком sudo")
+    if shutil.which("visudo") is None:
+        finish(False, "На хосте нет visudo: sudo без пароля не настроить")
 if root_password and not single_line(root_password):
     finish(False, "Недопустимый пароль root")
-for key in root_keys:
+for key in keys:
     if not KEY_RE.match(key):
         finish(False, "Строка не похожа на открытый SSH-ключ")
+for login in key_users:
+    if login != "root" and not LOGIN_RE.match(login):
+        finish(False, "Недопустимая учётная запись для ключей «" + login + "»")
 if permit not in ("", "prohibit-password", "yes"):
     finish(False, "Неизвестный режим входа root")
 sshd = sshd_binary()
@@ -259,14 +277,107 @@ if accounts:
 if root_password:
     messages.append("Пароль root изменён")
 
-# ---- ключи root ----
-if root_keys:
-    home = pwd.getpwnam("root").pw_dir or "/root"
+# ---- sudo без пароля ----
+def sudoers_includes_dir():
+    # Файлы /etc/sudoers.d действуют, только если sudoers их подключает.
+    try:
+        text = read_text(SUDOERS)
+    except OSError:
+        return False
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] in ("#includedir", "@includedir") and (
+            fields[1].rstrip("/") == SUDOERS_DIR
+        ):
+            return True
+    return False
+
+
+def visudo_check(*args):
+    # (прошла ли проверка, первая строка сообщения visudo).
+    # Без -q: с ним visudo не печатает и причину ошибки.
+    result = subprocess.run(
+        ["visudo", "-c"] + list(args), stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, universal_newlines=True,
+    )
+    lines = [
+        line.strip() for line in (result.stdout or "").splitlines()
+        if line.strip() and not line.strip().endswith("parsed OK")
+    ]
+    return result.returncode == 0, (lines[0][:200] if lines else "")
+
+
+if nopasswd:
+    if not os.path.isdir(SUDOERS_DIR) or not sudoers_includes_dir():
+        warnings.append(
+            SUDOERS + " не подключает " + SUDOERS_DIR + ": sudo без пароля не "
+            "настроен, sudo будет спрашивать пароль"
+        )
+    else:
+        # Общая проверка решает об откате, только если проходила до правила:
+        # на МОС штатный файл sudoers.d с правами 0644 валит её всегда.
+        before_ok, before_error = visudo_check()
+        if not before_ok:
+            warnings.append(
+                "visudo -c и до изменений сообщает об ошибке (" + before_error
+                + "): правила dno-tool проверены отдельно"
+            )
+        for login in nopasswd:
+            # Имя без точки: файлы с точкой в имени sudo пропускает, поэтому
+            # временный файл (.dno-...) до проверки не действует.
+            target = os.path.join(SUDOERS_DIR, "dno-tool-" + login)
+            fd, temporary = tempfile.mkstemp(prefix=".dno-", dir=SUDOERS_DIR)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(
+                        "# dno-tool: sudo без пароля для " + login + "\n"
+                        + login + " ALL=(ALL) NOPASSWD: ALL\n"
+                    )
+                os.chmod(temporary, 0o440)
+                os.chown(temporary, 0, 0)
+                if not visudo_check("-f", temporary)[0]:
+                    # finish выходит через os._exit, finally не выполнится.
+                    os.unlink(temporary)
+                    finish(False, "Правило sudo для «" + login + "» не прошло visudo")
+                previous = read_text(target) if os.path.isfile(target) else None
+                os.replace(temporary, target)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+            # Весь sudoers целиком: при ошибке sudo перестал бы работать.
+            if before_ok and not visudo_check()[0]:
+                if previous is None:
+                    os.unlink(target)
+                else:
+                    replace_text(target, previous, 0o440)
+                finish(False, "После правила для «" + login + "» sudoers не проходит "
+                       "visudo -c, правило убрано")
+            restorecon(target)
+            messages.append("«" + login + "»: sudo без пароля (" + target + ")")
+
+# ---- открытые ключи учётных записей ----
+def add_keys(login):
+    # Добавить keys в ~/.ssh/authorized_keys учётной записи без повторов.
+    entry = pwd.getpwnam(login)
+    home = entry.pw_dir or ("/root" if login == "root" else "")
+    if not home or not os.path.isdir(home):
+        warnings.append(
+            "У «" + login + "» нет домашнего каталога: ключи не добавлены"
+        )
+        return
     directory = os.path.join(home, ".ssh")
-    os.makedirs(directory, mode=0o700, exist_ok=True)
-    os.chown(directory, 0, 0)
-    os.chmod(directory, 0o700)
     target = os.path.join(directory, "authorized_keys")
+    # Каталог принадлежит пользователю: ссылка вместо ~/.ssh или
+    # authorized_keys направила бы chown от root на чужой файл.
+    if os.path.islink(directory) or os.path.islink(target):
+        warnings.append(
+            "У «" + login + "» ~/.ssh или authorized_keys - символическая ссылка: "
+            "ключи не добавлены"
+        )
+        return
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    os.lchown(directory, entry.pw_uid, entry.pw_gid)
+    os.chmod(directory, 0o700)
     old = read_text(target) if os.path.exists(target) else ""
     present = set()
     for line in old.splitlines():
@@ -274,21 +385,43 @@ if root_keys:
         for index in range(len(fields) - 1):
             present.add(tuple(fields[index:index + 2]))
     added = []
-    for key in root_keys:
+    for key in keys:
         identity = tuple(key.split()[:2])
         if identity not in present:
             present.add(identity)
             added.append(key)
     if added:
         text = old + ("\n" if old and not old.endswith("\n") else "")
-        replace_text(target, text + "".join(key + "\n" for key in added))
-    os.chown(target, 0, 0)
-    os.chmod(target, 0o600)
+        replace_text(
+            target,
+            text + "".join(key + "\n" for key in added),
+            uid=entry.pw_uid,
+            gid=entry.pw_gid,
+        )
+    if os.path.exists(target):
+        os.lchown(target, entry.pw_uid, entry.pw_gid)
+        os.chmod(target, 0o600)
     restorecon(directory)
     messages.append(
-        "Ключи root: добавлено " + str(len(added)) + ", уже были "
-        + str(len(root_keys) - len(added))
+        "Ключи «" + login + "»: добавлено " + str(len(added)) + ", уже были "
+        + str(len(keys) - len(added))
     )
+
+
+# После создания учётных записей: ключи получают и только что созданные.
+if keys:
+    for login in key_users:
+        try:
+            entry = pwd.getpwnam(login)
+        except KeyError:
+            warnings.append("Учётной записи «" + login + "» нет: ключи не добавлены")
+            continue
+        if login != "root" and entry.pw_uid < minimum:
+            warnings.append(
+                "«" + login + "» - системная учётная запись: ключи не добавлены"
+            )
+            continue
+        add_keys(login)
 
 def denyusers_has_root():
     if not os.path.isfile(DENYUSERS):

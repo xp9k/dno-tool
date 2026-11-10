@@ -71,11 +71,9 @@ class ConfigService(BaseService):
                         raise RuntimeError("Настройки подключения изменились. Откройте мастер заново.")
                 next_app = deepcopy(current)
                 next_app.credentials = deepcopy(ctx.credentials)
-                if ctx.services.get("ssh"):
-                    next_app.ssh.use_sudo = ctx.ssh.use_sudo
-                # Связку по умолчанию задают шаги «SSH-ключи» и «Подготовка».
-                if ctx.services.get("ssh") or ctx.services.get("prepare"):
-                    next_app.credentials.default_bundle_iid = ctx.ssh.bundle_iid
+                # Связка и sudo по умолчанию задаются на шаге «Хосты» (он есть всегда).
+                next_app.credentials.default_bundle_iid = ctx.default_bundle_iid or None
+                next_app.ssh.use_sudo = bool(ctx.use_sudo)
                 hosts_data = ctx.hosts_data
                 assignments = dict(ctx.install_result.bundle_assignments)
                 if assignments:
@@ -86,9 +84,12 @@ class ConfigService(BaseService):
                     logins[""] = logins.get(next_app.credentials.default_bundle_iid)
                     if set(assignments.values()) - set(logins):
                         raise ValueError("Связка для подготовленных хостов не найдена")
-                    # Вход не под root на подготовленном хосте идёт через sudo.
+                    # Вход не под root на подготовленном хосте: sudo - как при
+                    # установке (галочка «Использовать sudo» связки «после»).
+                    prepare = getattr(getattr(ctx, "install_plan", None), "prepare", None)
+                    after_sudo = bool(getattr(prepare, "after_use_sudo", True))
                     use_sudo = {
-                        iid: (True if (logins[iid] or "root") != "root" else None)
+                        iid: (after_sudo if (logins[iid] or "root") != "root" else None)
                         for iid in set(assignments.values())
                     }
                     hosts_data = apply_host_bundles(hosts_data, assignments, use_sudo)

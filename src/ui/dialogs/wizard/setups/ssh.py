@@ -2,16 +2,14 @@
 
 import os
 
-from PySide6.QtWidgets import QCheckBox, QFormLayout, QFrame, QVBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
 
-from src.config import config
 from src.ui.dialogs.common.ssh_manage import SSHKeyTableWidget
 from src.ui.dialogs.wizard.setups.base import SetupPage, hint_label
-from src.ui.widgets.bundle_selector import BundleSelector
 
 
 class SshSetupPage(SetupPage):
-    """SSH-ключи и связка по умолчанию."""
+    """SSH-ключи локальной машины."""
 
     sid = "local_ssh"
 
@@ -26,67 +24,17 @@ class SshSetupPage(SetupPage):
             hint_label(
                 "Используется существующий SSH-ключ по умолчанию.\n"
                 "Если открытого ключа нет, он извлекается из закрытого.\n"
-                "Установка ключей на удалённые хосты выполняется на шаге «Удалённые».\n"
-                "Связка по умолчанию используется для хостов, у которых не задана "
-                "своя связка на шаге «Хосты»."
+                "Установка ключей на удалённые хосты выполняется на шаге «Удалённые». "
+                "Связки (логин и пароль) задаются на шаге «Хосты»."
             )
         )
 
-        creds_box = QFrame()
-        creds_box.setFrameShape(QFrame.Shape.NoFrame)
-        creds_form = QFormLayout(creds_box)
-        creds_form.setContentsMargins(0, 4, 0, 4)
-        creds_form.setSpacing(6)
-
-        # Связка учётных данных по умолчанию (глобальная)
-        self._ssh_bundle_selector = BundleSelector(
-            allow_none=True, none_label="(нет связки)"
-        )
-        try:
-            from src.di import get_container
-            from src.services.configuration.credential_service import CredentialService
-
-            svc = get_container().resolve_optional(CredentialService)
-            if svc is not None:
-                self._ssh_bundle_selector.set_current_iid(svc.get_default_bundle_iid())
-        except Exception:
-            pass
-        self._ssh_bundle_selector.setToolTip(
-            "Связка учётных данных (логин/пароль) по умолчанию для SSH-подключений.\n"
-            "Хосты с явным выбором связки перекрывают это значение.\n\n"
-            "Кнопка справа открывает окно управления связками."
-        )
-        creds_form.addRow("Связка по умолчанию:", self._ssh_bundle_selector)
-
-        self._ssh_use_sudo_cb = QCheckBox(
-            "Использовать sudo для non-root логина (например, wheel)"
-        )
-        self._ssh_use_sudo_cb.setChecked(config.app.ssh.use_sudo)
-        self._ssh_use_sudo_cb.setToolTip(
-            "Включите, если SSH-логин - не root, а пользователь с sudo.\n"
-            "Пароль sudo берётся из пароля выбранной связки (по умолчанию\n"
-            "или per-host).\n"
-            "Команды установки пакетов на удалённых хостах выполняются через sudo."
-        )
-        creds_form.addRow(self._ssh_use_sudo_cb)
-        layout.addWidget(creds_box)
-
         self._ssh_widget = SSHKeyTableWidget(self)
         layout.addWidget(self._ssh_widget, 1)
-        self._ctx = None
-        self._ssh_bundle_selector.changed.connect(self._on_bundle_changed)
-
-    def _on_bundle_changed(self, iid) -> None:
-        # Связка по умолчанию общая с шагом «Подготовка»: пишется сразу.
-        if self._ctx is not None:
-            self._ctx.ssh.bundle_iid = iid or ""
 
     # --- контракт SetupPage ---
 
     def on_enter(self, ctx) -> None:
-        self._ctx = ctx
-        self._ssh_bundle_selector.refresh()
-        self._ssh_bundle_selector.set_current_iid(ctx.ssh.bundle_iid or None)
         w = self._ssh_widget
         if w is None:
             return
@@ -102,9 +50,6 @@ class SshSetupPage(SetupPage):
                 pass
 
     def collect(self, ctx) -> None:
-        # bundle_iid не перезаписывается из списка: значение могло смениться на
-        # шаге «Подготовка», а этот список с тех пор не открывался.
-        ctx.ssh.use_sudo = self.sudo_checked()
         ctx.ssh.private_key_path = self.selected_private_key_path()
         self._key_error = ""
         try:
@@ -164,19 +109,6 @@ class SshSetupPage(SetupPage):
                 return keys[row]["priv_path"]
         return get_default_key_path()
 
-    def sudo_checked(self) -> bool:
-        if self._ssh_use_sudo_cb is None:
-            return False
-        return bool(self._ssh_use_sudo_cb.isChecked())
-
-    def bundle_iid(self) -> str:
-        if self._ssh_bundle_selector is None:
-            return ""
-        try:
-            return self._ssh_bundle_selector.current_iid() or ""
-        except Exception:
-            return ""
-
     def key_pair_exists(self) -> bool:
         w = self._ssh_widget
         if w is None:
@@ -186,29 +118,3 @@ class SshSetupPage(SetupPage):
             return w.check_key_pair_match(private, private + ".pub")
         except Exception:
             return False
-
-    def sudo_warning(self) -> str | None:
-        """Текст предупреждения для shell: sudo включен, а пароля в связке нет."""
-        if not self.sudo_checked():
-            return None
-        default_iid = (
-            self._ctx.ssh.bundle_iid if self._ctx is not None else self.bundle_iid()
-        )
-        has_pwd = False
-        if default_iid:
-            try:
-                svc = self._ssh_bundle_selector._get_service()
-                if svc is not None:
-                    b = svc.get_bundle_by_iid(default_iid)
-                    if b is not None:
-                        has_pwd = bool(b.password)
-            except Exception:
-                pass
-        if has_pwd:
-            return None
-        return (
-            "Включено использование sudo, но в выбранной связке "
-            "нет пароля.\n\n"
-            "Установка пакетов на хостах с sudo потребует пароль. "
-            "Без пароля пакеты не смогут установиться."
-        )

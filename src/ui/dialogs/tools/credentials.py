@@ -25,7 +25,7 @@ from PySide6.QtCore import Qt
 
 from src.logger import logger
 from src.ui.widgets.device_tree import PasswordDelegate, PASSWORD_DATAROLE
-from src.services.configuration.credential_service import CredentialService, PASSWORD_UNCHANGED
+from src.services.configuration.credential_service import CredentialService
 
 
 class CredentialsDialog(QDialog):
@@ -171,8 +171,8 @@ class CredentialsDialog(QDialog):
 
         Реальный пароль берётся из PASSWORD_DATAROLE (PasswordDelegate
         записывает туда при редактировании). В text() может быть маска.
-        Если пароль не редактировался — используется sentinel PASSWORD_UNCHANGED,
-        и CredentialService сохранит старое значение.
+        Таблица загружается с открытыми паролями, поэтому пустое значение
+        означает связку без пароля: пароль, стёртый в ячейке, удаляется.
         """
         out = []
         for row in range(self._table.rowCount()):
@@ -183,15 +183,14 @@ class CredentialsDialog(QDialog):
                 continue
             description = d_item.text().strip()
             login = l_item.text().strip() if l_item else ""
-            # Пароль: из PASSWORD_DATAROLE (реальное) или sentinel
-            real_pw = p_item.data(PASSWORD_DATAROLE) if p_item else ""
+            real_pw = (p_item.data(PASSWORD_DATAROLE) if p_item else "") or ""
             iid = d_item.data(Qt.ItemDataRole.UserRole + 5) or ""
             out.append(
                 {
                     "iid": iid,
                     "description": description,
                     "login": login,
-                    "password": real_pw if real_pw else PASSWORD_UNCHANGED,
+                    "password": real_pw,
                 }
             )
         return out

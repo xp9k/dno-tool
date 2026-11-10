@@ -31,6 +31,10 @@ def probe_rfb_banner(host, port, abort):
             connection.close()
 
 
+class SudoPasswordRejected(PermissionError):
+    """sudo повторно спросил пароль: пароль связки не подошёл."""
+
+
 class SetupTransport:
     def __init__(self, ssh, abort, use_sudo=False, password=None):
         self.ssh, self.abort = ssh, abort
@@ -83,17 +87,22 @@ class SetupTransport:
             channel.exec_command(command)
             out, err = bytearray(), bytearray()
             sudo_pending = self.use_sudo
+            password_sent = False
             eof = False
             while True:
                 remaining()
                 if channel.recv_stderr_ready():
                     err.extend(channel.recv_stderr(65536))
                     if sudo_pending and b"DNO_SETUP_SUDO:" in err:
+                        if password_sent:
+                            # Повторный запрос: sudo отклонил пароль и ждёт
+                            # новый, иначе он молча завершится с кодом 1.
+                            raise SudoPasswordRejected("sudo rejected the password")
                         if self.password is None:
                             raise PermissionError("sudo requires a password")
                         self._send(channel, (self.password + "\n").encode(), remaining)
                         err.clear()
-                        sudo_pending = False
+                        password_sent = True
                 if channel.recv_ready():
                     out.extend(channel.recv(65536))
                 if not self.use_sudo or b"DNO_SETUP_READY\n" in out:

@@ -17,8 +17,6 @@ from src.config.settings import DEFAULT_VNC_SERVER
 class SshState:
     """Состояние шага SSH-ключей."""
 
-    bundle_iid: str = ""
-    use_sudo: bool = False
     pubkey: str = ""
     private_key_path: str = ""
 
@@ -135,6 +133,10 @@ class WizardContext:
     commands_data: list = field(default_factory=list)
     baseline: dict = field(default_factory=dict, repr=False)
     credentials: object = field(default=None, repr=False)
+    # Связка по умолчанию (глобальная): задаётся на шаге «Хосты».
+    default_bundle_iid: str = ""
+    # Общая настройка sudo (ssh.use_sudo): тоже на шаге «Хосты».
+    use_sudo: bool = False
     applied_actions: list = field(default_factory=list)
     commands_loaded: bool = False
     ssh: SshState = field(default_factory=SshState)

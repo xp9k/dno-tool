@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QButtonGroup,
-    QSplitter,
     QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -120,13 +119,13 @@ class SetupWizardDialog(QDialog):
         self._current_step = 0
         self._nav_suppress = False
 
+        # Связка по умолчанию задаётся на шаге «Хосты», читается остальными.
+        self.ctx.default_bundle_iid = self.ctx.credentials.default_bundle_iid or ""
+        self.ctx.use_sudo = bool(self.ctx.baseline["app"].ssh.use_sudo)
         self._build_pages()
-        self.ssh_page._ssh_bundle_selector.refresh()
-        self.ssh_page._ssh_bundle_selector.set_current_iid(
-            self.ctx.credentials.default_bundle_iid
-        )
-        # Общее значение шагов «SSH-ключи» и «Подготовка».
-        self.ctx.ssh.bundle_iid = self.ctx.credentials.default_bundle_iid or ""
+        # collect шага «Хосты» пишет связку по умолчанию и тогда, когда шаг
+        # не открывали: список должен сразу показывать текущее значение.
+        self.hosts_page.on_enter(self.ctx)
         self.veyon_page.set_snapshot(self.ctx.baseline["app"])
         self.commands_page._guard = self.guard
         if self.ctx.mode == "existing":
@@ -223,9 +222,12 @@ class SetupWizardDialog(QDialog):
         sep.setStyleSheet("color: palette(mid);")
         layout.addWidget(sep)
 
-        central = QSplitter(Qt.Orientation.Horizontal)
-        central.setHandleWidth(1)
-        central.setChildrenCollapsible(False)
+        # Навигация фиксированной ширины: сплиттер здесь не нужен (его секция
+        # шире дерева и оставляла пустую полосу), граница - линия в 1 px.
+        central_widget = QWidget()
+        central = QHBoxLayout(central_widget)
+        central.setContentsMargins(0, 0, 0, 0)
+        central.setSpacing(0)
 
         self._nav_tree = QTreeWidget()
         self._nav_tree.setHeaderHidden(True)
@@ -236,16 +238,20 @@ class SetupWizardDialog(QDialog):
         self._nav_tree.currentItemChanged.connect(self._on_nav_tree_changed)
         central.addWidget(self._nav_tree)
 
+        nav_sep = QFrame()
+        nav_sep.setFrameShape(QFrame.Shape.VLine)
+        nav_sep.setStyleSheet("color: palette(mid);")
+        central.addWidget(nav_sep)
+
         self._stack = QStackedWidget()
         self._stack_widgets = {}  # sid -> index
         for step in STEP_ORDER:
             widget = self._page_widget(step.sid)
             idx = self._stack.addWidget(widget)
             self._stack_widgets[step.sid] = idx
-        central.addWidget(self._stack)
-        central.setStretchFactor(1, 1)
+        central.addWidget(self._stack, 1)
 
-        layout.addWidget(central, 1)
+        layout.addWidget(central_widget, 1)
 
         btn_sep = QFrame()
         btn_sep.setFrameShape(QFrame.Shape.HLine)
@@ -744,28 +750,6 @@ class SetupWizardDialog(QDialog):
                 )
                 != QMessageBox.Yes
             ):
-                return
-
-        # Валидация: sudo без пароля в выбранной связке - предупреждение.
-        warn = None
-        try:
-            warn = self.ssh_page.sudo_warning() if self.ctx.services.get("ssh") else None
-        except Exception:
-            warn = None
-        if warn:
-            btn = QMessageBox.warning(
-                self,
-                "Пароль для sudo",
-                warn + "\n\n"
-                "Установка пакетов на хостах с sudo потребует пароль. "
-                "Без пароля пакеты не смогут установиться.\n\n"
-                "• «Указать связку» - вернуться в мастер.\n"
-                "• «Сохранить как есть» - если на хостах sudo без пароля "
-                "или для каждого хоста задана отдельная связка с паролем.",
-                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
-            if btn != QMessageBox.StandardButton.Save:
                 return
 
         from src.data import datastore
