@@ -91,6 +91,13 @@ class BundleSelector(QWidget):
             return None
         return iid
 
+    def set_none_label(self, label: str) -> None:
+        """Сменить текст записи «нет связки» (например, имя наследуемой)."""
+        if label != self._none_label:
+            self._none_label = label
+            if self._allow_none and self._combo.count():
+                self._combo.setItemText(0, label)
+
     def _get_service(self):
         if self._service is not None:
             return self._service

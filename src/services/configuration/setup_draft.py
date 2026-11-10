@@ -66,6 +66,34 @@ def normalize_tree(items, kind):
     return result
 
 
+def apply_host_bundles(items, assignments, use_sudo):
+    """Копия дерева хостов с назначенными связками.
+
+    assignments - {iid хоста: iid связки}, пустой iid - наследовать глобальную
+    (своя связка записи снимается); use_sudo - {iid связки: bool | None} для
+    записей хостов (None - не менять). Хосты, которых в дереве уже нет,
+    пропускаются.
+    """
+    result = deepcopy(items)
+
+    def walk(nodes):
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            if "host" in node:
+                if node.get("iid") in assignments:
+                    bundle = assignments[node["iid"]] or None
+                    node["credential_bundle_iid"] = bundle
+                    sudo = use_sudo.get(bundle or "")
+                    if sudo is not None:
+                        node["use_sudo"] = sudo
+            elif len(node) == 1 and isinstance(next(iter(node.values())), list):
+                walk(next(iter(node.values())))
+
+    walk(result)
+    return result
+
+
 class CommandDraft:
     def __init__(self, data=()):
         self.data = normalize_tree(list(data), "commands")

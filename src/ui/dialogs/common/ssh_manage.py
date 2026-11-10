@@ -46,6 +46,64 @@ from src.workers.command.executor_base import (
 _SSH_DIR = os.path.join(os.path.expanduser("~"), ".ssh")
 
 
+def check_key_pair_match(privkey_path, pubkey_path):
+    """Совпадает ли открытый ключ с закрытым."""
+    if not os.path.exists(privkey_path) or not os.path.exists(pubkey_path):
+        return False
+    try:
+        key = load_private_key(privkey_path)
+        if key is None:
+            return False
+        derived_key = f"{key.get_name()} {key.get_base64()}"
+        with open(pubkey_path, "r", encoding="utf-8") as f:
+            pubkey = f.read().strip()
+        return derived_key == " ".join(pubkey.split()[:2])
+    except Exception as e:
+        logger.debug("ssh_manage keys_match: %s", e)
+        return False
+
+
+def scan_ssh_keys():
+    """Сканировать ~/.ssh и вернуть список найденных пар ключей.
+
+    Используется таблицей ключей и шагом мастера «Подготовка».
+    """
+    keys = []
+    try:
+        entries = os.listdir(_SSH_DIR)
+    except OSError:
+        return keys
+    default_priv = os.path.normpath(get_default_key_path())
+    seen = set()
+    for name in sorted(entries):
+        if name.endswith(".pub"):
+            name = name[:-4]
+        type_name = _detect_key_type(name)
+        if type_name is None or name in seen:
+            continue
+        seen.add(name)
+        priv_path = os.path.join(_SSH_DIR, name)
+        pub_path = os.path.join(_SSH_DIR, name + ".pub")
+        has_priv = os.path.isfile(priv_path)
+        has_pub = os.path.isfile(pub_path)
+        pair_match = False
+        if has_priv and has_pub:
+            pair_match = check_key_pair_match(priv_path, pub_path)
+        keys.append(
+            {
+                "name": name,
+                "type": type_name,
+                "priv_path": priv_path,
+                "pub_path": pub_path,
+                "has_priv": has_priv,
+                "has_pub": has_pub,
+                "pair_match": pair_match,
+                "is_default": has_priv and os.path.normpath(priv_path) == default_priv,
+            }
+        )
+    return keys
+
+
 class SSHKeyTableWidget(QWidget):
     """Виджет таблицы SSH-ключей без установки на хосты.
 
@@ -140,64 +198,13 @@ class SSHKeyTableWidget(QWidget):
         self.privkey_path = privkey_path
 
     def check_key_pair_match(self, privkey_path, pubkey_path):
-        if not os.path.exists(privkey_path) or not os.path.exists(pubkey_path):
-            return False
-        try:
-            key = load_private_key(privkey_path)
-            if key is None:
-                return False
-            derived_pub = f"{key.get_name()} {key.get_base64()} {key.get_name()}"
-            with open(pubkey_path, "r", encoding="utf-8") as f:
-                pubkey = f.read().strip()
-            derived_key = " ".join(derived_pub.split()[:2])
-            pubkey_key = " ".join(pubkey.split()[:2])
-            return derived_key == pubkey_key
-        except Exception as e:
-            logger.debug("ssh_manage keys_match: %s", e)
-            return False
+        return check_key_pair_match(privkey_path, pubkey_path)
 
     # --- Таблица ключей ---
 
     def scan_ssh_keys(self):
         """Сканировать ~/.ssh и вернуть список найденных пар ключей."""
-        keys = []
-        try:
-            entries = os.listdir(_SSH_DIR)
-        except OSError:
-            return keys
-        default_priv = os.path.normpath(get_default_key_path())
-        seen = set()
-        for name in sorted(entries):
-            if name.endswith(".pub"):
-                name = name[:-4]
-            type_name = _detect_key_type(name)
-            if type_name is None:
-                continue
-            pub_name = name + ".pub"
-            if name in seen:
-                continue
-            seen.add(name)
-            priv_path = os.path.join(_SSH_DIR, name)
-            pub_path = os.path.join(_SSH_DIR, pub_name)
-            has_priv = os.path.isfile(priv_path)
-            has_pub = os.path.isfile(pub_path)
-            pair_match = False
-            if has_priv and has_pub:
-                pair_match = self.check_key_pair_match(priv_path, pub_path)
-            keys.append(
-                {
-                    "name": name,
-                    "type": type_name,
-                    "priv_path": priv_path,
-                    "pub_path": pub_path,
-                    "has_priv": has_priv,
-                    "has_pub": has_pub,
-                    "pair_match": pair_match,
-                    "is_default": has_priv
-                    and os.path.normpath(priv_path) == default_priv,
-                }
-            )
-        return keys
+        return scan_ssh_keys()
 
     def reload_keys_table(self):
         """Перезаполнить таблицу ключей."""

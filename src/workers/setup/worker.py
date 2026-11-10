@@ -79,6 +79,7 @@ class RemoteServiceInstallerWorker(BaseWorker):
         veyon_private_key: str = "",
         ssh_settings=None,
         service_options=(),
+        prepare=None,
         parent=None,
     ) -> None:
         super().__init__()
@@ -88,6 +89,15 @@ class RemoteServiceInstallerWorker(BaseWorker):
         self.service_order = tuple(item.key for item in self.installers)
         if set(self.services) - set(self.service_order):
             raise ValueError("Неизвестный сервис установки")
+        # PreparePlan: подготовка выполняется под своей связкой, остальные
+        # сервисы хоста - под связкой для подготовленных хостов.
+        self.prepare = prepare if self.services.get("prepare") else None
+        if self.services.get("prepare") and self.prepare is None:
+            raise ValueError("Не заданы параметры подготовки")
+        # iid -> "prepare" | "after": стадия учётных данных хоста.
+        self._stages = {}
+        # (iid, service) -> итоговый код.
+        self._codes = {}
         option_values = dict(service_options)
         self.service_options = tuple((item.key, item.build_parameters(dict(option_values.get(item.key, ()))))
                                      for item in self.installers if self.services.get(item.key) and item.parameters)
@@ -152,6 +162,7 @@ class RemoteServiceInstallerWorker(BaseWorker):
             if key in self._terminal_results:
                 return
             self._terminal_results.add(key)
+            self._codes[key] = code
         self.service_result.emit(device, service, code, output)
 
     def _execute_install(self) -> None:
@@ -233,14 +244,67 @@ class RemoteServiceInstallerWorker(BaseWorker):
         self._cancel_thread.start()
         logger.info("RemoteServiceInstallerWorker: abort requested")
 
-    def _resolve_credentials(self, device: DeviceModel):
+    def _bundle(self, iid):
+        """(login, password) связки из плана мастера или сервиса связок."""
+        if not iid:
+            return None
+        if self.credential_bundles is not None:
+            for bundle_iid, login, password in self.credential_bundles:
+                if bundle_iid == iid:
+                    return login, password
+            return None
+        from src.di import get_container
+        from src.services.configuration.credential_service import CredentialService
+
+        service = get_container().resolve_optional(CredentialService)
+        bundle = service.get_bundle_by_iid(iid) if service is not None else None
+        return (bundle.login, bundle.password) if bundle is not None else None
+
+    def _global_bundle_iid(self):
+        """Связка по умолчанию: выбранная в мастере, иначе из настроек."""
+        if self.default_bundle_iid is not None:
+            return self.default_bundle_iid
+        return config.app.credentials.default_bundle_iid
+
+    def _stage(self, device):
+        """Стадия учётных данных хоста: None - подготовка не выбрана."""
+        if self.prepare is None:
+            return None
+        return self._stages.get(device.iid, "prepare")
+
+    def _resolve_credentials(self, device: DeviceModel, stage=None):
         """Учётные данные из связок (get_credentials).
 
         Связка по умолчанию, выбранная в мастере (ещё не сохранённая в config),
         применяется до вызова get_credentials: если у хоста нет собственной
         связки — временно резолвим выбранную связку напрямую.
         SSH-ключ (private_key) резолвится как раньше.
+
+        С подготовкой: стадия "prepare" - связка входа для подготовки без
+        ключа (на заводском хосте его нет), "after" - связка для
+        подготовленных хостов и выбранный ключ; по умолчанию - текущая стадия
+        хоста.
         """
+        stage = stage or self._stage(device)
+        if stage is not None:
+            iid = (
+                self.prepare.connect_bundle_iid
+                if stage == "prepare"
+                else self.prepare.after_bundle_iid
+            )
+            # Пустой iid - наследовать глобальную связку; своя связка хоста не
+            # учитывается: после подготовки запись хоста её теряет.
+            chosen = self._bundle(iid or self._global_bundle_iid())
+            if chosen is None:
+                raise ValueError("Связка подготовки не найдена в плане")
+            key = None
+            if stage == "after":
+                key = get_credentials(
+                    device, key_path=self.ssh_private_key_path or None
+                ).private_key
+            return CredentialsResult(
+                username=chosen[0] or "root", password=chosen[1], private_key=key
+            )
         base = get_credentials(device, key_path=self.ssh_private_key_path or None)
         if self.credential_bundles is not None:
             bundles = {
@@ -290,6 +354,10 @@ class RemoteServiceInstallerWorker(BaseWorker):
         """use_sudo: хост → общее значение мастера → конфиг."""
         from src.workers.command.sudo_utils import should_use_sudo
 
+        # С подготовкой вход не под root всегда идёт через sudo: заводская
+        # учётка - администратор, учётке «после» права проверены на шаге.
+        if self.prepare is not None:
+            return True
         if getattr(device, "use_sudo", None) is not None:
             return bool(device.use_sudo)
         if self.use_sudo_override is not None:
@@ -309,10 +377,13 @@ class RemoteServiceInstallerWorker(BaseWorker):
     # ------------------------------------------------------------ per-host
 
     def _install_on_host(self, device: DeviceModel) -> None:
-        """Установить все выбранные сервисы на один хост."""
-        import paramiko
+        """Установить все выбранные сервисы на один хост.
 
-        from dataclasses import replace
+        С подготовкой сервисы идут двумя группами: сначала «prepare» под
+        связкой входа для подготовки, затем остальные в новом подключении под
+        связкой для подготовленных хостов. Неудачная подготовка пропускает
+        остальные сервисы хоста.
+        """
         from src.workers.setup.context import OperationContext
         from src.workers.setup.types import validate_port
         operation_context = OperationContext.from_worker(self)
@@ -353,18 +424,61 @@ class RemoteServiceInstallerWorker(BaseWorker):
                     )
             return
 
+        selected = tuple(
+            descriptor
+            for descriptor in self.installers
+            if self.services.get(descriptor.key)
+        )
+        if self.prepare is not None:
+            groups = (
+                tuple(d for d in selected if d.key == "prepare"),
+                tuple(d for d in selected if d.key != "prepare"),
+            )
+        else:
+            groups = (selected,)
+        for index, group in enumerate(groups):
+            if not group or self._local_abort.is_set():
+                continue
+            if index:
+                code = self._codes.get((device.iid, "prepare"))
+                if code not in (RESULT_SUCCESS, RESULT_IGNORE):
+                    for descriptor in group:
+                        self._report(
+                            device,
+                            descriptor.key,
+                            RESULT_ERROR,
+                            "Пропущено: подготовка хоста не выполнена",
+                        )
+                    return
+                # Остальные сервисы - новое подключение под связкой
+                # для подготовленных хостов.
+                self._stages[device.iid] = "after"
+            if not self._run_installers(device, group, operation_context):
+                return
+
+    def _run_installers(self, device, descriptors, operation_context) -> bool:
+        """Одно SSH-подключение и установщики группы; False - не подключились.
+
+        Ошибки подключения и предварительной проверки получают только ячейки
+        этой группы: ячейки следующих групп закрывает вызывающий.
+        """
+        import paramiko
+
+        from dataclasses import replace
+
+        services = tuple(descriptor.key for descriptor in descriptors)
+        stage = self._stage(device)
         try:
             creds = self._resolve_credentials(device)
         except Exception:
-            for svc in self.service_order:
-                if self.services.get(svc):
-                    self._report(
-                        device,
-                        svc,
-                        RESULT_ERROR,
-                        "Не удалось разрешить выбранную связку",
-                    )
-            return
+            for svc in services:
+                self._report(
+                    device,
+                    svc,
+                    RESULT_ERROR,
+                    "Не удалось разрешить выбранную связку",
+                )
+            return False
         port = device.port or self._ssh_settings.port
 
         # sudo-параметры для non-root логина (PTY-expect через channel.get_pty)
@@ -374,6 +488,8 @@ class RemoteServiceInstallerWorker(BaseWorker):
         if creds.username == "root":
             use_sudo = False
         sudo_password = creds.password if use_sudo else None
+        # Сведения о подключении страница собирает по сервису "ssh".
+        log_service = "ssh"
 
         # Лог про sudo — только для non-root логина (root не требует sudo).
         # Пишем всегда (вкл/выкл), чтобы пользователь видел состояние в детальном логе хоста.
@@ -381,12 +497,14 @@ class RemoteServiceInstallerWorker(BaseWorker):
             if use_sudo:
                 self.host_log.emit(
                     device.host,
-                    "ssh",
+                    log_service,
                     f"sudo включён (non-root логин: {creds.username})",
                 )
             else:
                 self.host_log.emit(
-                    device.host, "ssh", f"sudo выключен (логин: {creds.username})"
+                    device.host,
+                    log_service,
+                    f"sudo выключен (логин: {creds.username})",
                 )
 
         ssh = None
@@ -404,6 +522,13 @@ class RemoteServiceInstallerWorker(BaseWorker):
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             if self._local_abort.is_set():
                 raise InterruptedError("Setup cancelled")
+            # Подготовка входит только паролем заводской учётки: ключи агента
+            # и ~/.ssh расходовали бы попытки входа (MaxAuthTries).
+            extra = (
+                dict(allow_agent=False, look_for_keys=False)
+                if stage == "prepare"
+                else {}
+            )
             ssh.connect(
                 hostname=device.host,
                 username=creds.username,
@@ -413,20 +538,28 @@ class RemoteServiceInstallerWorker(BaseWorker):
                 timeout=self._ssh_settings.connect_timeout,
                 banner_timeout=self._ssh_settings.connect_timeout,
                 auth_timeout=self._ssh_settings.ssh_connect_timeout,
+                **extra,
             )
             connected = True
         except Exception as e:
             err = f"SSH connection failed: {e}"
-            for svc in self.service_order:
-                if self.services.get(svc):
-                    self.host_log.emit(device.host, svc, "Ошибка SSH-подключения")
-                    self._report(
-                        device,
-                        svc,
-                        RESULT_ABORT if self._local_abort.is_set() else RESULT_ERROR,
-                        err,
-                    )
-            return
+            if stage is not None:
+                # Логин и способ входа: иначе не понять, какая связка не подошла.
+                how = "паролем" if stage == "prepare" else "ключом и паролем"
+                when = "для подготовки" if stage == "prepare" else "после подготовки"
+                err = (
+                    f"Не удалось подключиться {when} под «{creds.username}» "
+                    f"({how}): {type(e).__name__}: {e}"
+                )
+            for svc in services:
+                self.host_log.emit(device.host, svc, "Ошибка SSH-подключения")
+                self._report(
+                    device,
+                    svc,
+                    RESULT_ABORT if self._local_abort.is_set() else RESULT_ERROR,
+                    err,
+                )
+            return False
 
         finally:
             if connection_timer is not None:
@@ -463,22 +596,19 @@ class RemoteServiceInstallerWorker(BaseWorker):
                 or not platform.startswith("Linux\n")
                 or "systemctl" not in platform
             ):
-                for service in self.service_order:
-                    if self.services.get(service):
-                        self._report(
-                            device,
-                            service,
-                            RESULT_ERROR,
-                            "Нужен Linux с systemd и dnf/apt-get",
-                        )
-                return
+                for service in services:
+                    self._report(
+                        device,
+                        service,
+                        RESULT_ERROR,
+                        "Нужен Linux с systemd и dnf/apt-get",
+                    )
+                return False
             from importlib import import_module
 
-            for descriptor in self.installers:
+            for descriptor in descriptors:
                 if self._local_abort.is_set():
-                    return
-                if not self.services.get(descriptor.key):
-                    continue
+                    return False
                 if (device.iid, descriptor.key) in self._terminal_results:
                     continue
                 module, name = descriptor.implementation.split(":")
@@ -488,6 +618,7 @@ class RemoteServiceInstallerWorker(BaseWorker):
                     installer.install(device, ssh, run_cmd, write_file, sftp_append)
                 except Exception:
                     self._report(device, descriptor.key, RESULT_ERROR, "Не удалось выполнить установщик сервиса")
+            return True
         finally:
             with self._result_lock:
                 self._connections.discard(transport)

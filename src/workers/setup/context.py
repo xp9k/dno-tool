@@ -22,6 +22,8 @@ class InstallerParameters:
     vnc_port: int = 5900
     vnc_server: str = "kmsvnc"  # DEFAULT_VNC_SERVER (src.config.settings)
     extra_packages: tuple[str, ...] = ()
+    # PreparePlan шага «Подготовка» (None - сервис не выбран).
+    prepare: object = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)

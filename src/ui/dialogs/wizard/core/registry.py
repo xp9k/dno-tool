@@ -86,6 +86,16 @@ _BUILTIN_STEPS = (
         group="local",
         requires_service="vnc",
     ),
+    # После локальных шагов (ключи, связки): подготовка выполняется первым
+    # сервисом удалённой установки.
+    StepDescriptor(
+        "remote_prepare",
+        "Подготовка",
+        "Удалённые: подготовка устройств",
+        "key_exists",
+        group="remote",
+        requires_service="prepare",
+    ),
     StepDescriptor(
         "remote_packages",
         "Пакеты",

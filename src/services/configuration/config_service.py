@@ -73,7 +73,25 @@ class ConfigService(BaseService):
                 next_app.credentials = deepcopy(ctx.credentials)
                 if ctx.services.get("ssh"):
                     next_app.ssh.use_sudo = ctx.ssh.use_sudo
+                # Связку по умолчанию задают шаги «SSH-ключи» и «Подготовка».
+                if ctx.services.get("ssh") or ctx.services.get("prepare"):
                     next_app.credentials.default_bundle_iid = ctx.ssh.bundle_iid
+                hosts_data = ctx.hosts_data
+                assignments = dict(ctx.install_result.bundle_assignments)
+                if assignments:
+                    from src.services.configuration.setup_draft import apply_host_bundles
+
+                    logins = {b.iid: b.login for b in next_app.credentials.bundles}
+                    # Пустая связка - наследовать глобальную (по умолчанию).
+                    logins[""] = logins.get(next_app.credentials.default_bundle_iid)
+                    if set(assignments.values()) - set(logins):
+                        raise ValueError("Связка для подготовленных хостов не найдена")
+                    # Вход не под root на подготовленном хосте идёт через sudo.
+                    use_sudo = {
+                        iid: (True if (logins[iid] or "root") != "root" else None)
+                        for iid in set(assignments.values())
+                    }
+                    hosts_data = apply_host_bundles(hosts_data, assignments, use_sudo)
                 if ctx.services.get("veyon"):
                     allowed = {"key_name", "webapi_url", "feature_transport", "webapi_connection_limit", "server_port"}
                     if set(ctx.veyon.settings) - allowed:
@@ -118,7 +136,7 @@ class ConfigService(BaseService):
                             revision = "_" + field + "_revision"
                             setattr(self._config, revision, getattr(self._config, revision, 0) + 1)
 
-                datastore.commit_setup_snapshot(baseline["data"], ctx.hosts_data, ctx.commands_data, persist)
+                datastore.commit_setup_snapshot(baseline["data"], hosts_data, ctx.commands_data, persist)
             try:
                 self.notify_thumbnail_settings_changed()
                 if self._event_bus:

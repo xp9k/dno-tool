@@ -73,10 +73,20 @@ class SshSetupPage(SetupPage):
 
         self._ssh_widget = SSHKeyTableWidget(self)
         layout.addWidget(self._ssh_widget, 1)
+        self._ctx = None
+        self._ssh_bundle_selector.changed.connect(self._on_bundle_changed)
+
+    def _on_bundle_changed(self, iid) -> None:
+        # Связка по умолчанию общая с шагом «Подготовка»: пишется сразу.
+        if self._ctx is not None:
+            self._ctx.ssh.bundle_iid = iid or ""
 
     # --- контракт SetupPage ---
 
     def on_enter(self, ctx) -> None:
+        self._ctx = ctx
+        self._ssh_bundle_selector.refresh()
+        self._ssh_bundle_selector.set_current_iid(ctx.ssh.bundle_iid or None)
         w = self._ssh_widget
         if w is None:
             return
@@ -92,7 +102,8 @@ class SshSetupPage(SetupPage):
                 pass
 
     def collect(self, ctx) -> None:
-        ctx.ssh.bundle_iid = self.bundle_iid()
+        # bundle_iid не перезаписывается из списка: значение могло смениться на
+        # шаге «Подготовка», а этот список с тех пор не открывался.
         ctx.ssh.use_sudo = self.sudo_checked()
         ctx.ssh.private_key_path = self.selected_private_key_path()
         self._key_error = ""
@@ -180,7 +191,9 @@ class SshSetupPage(SetupPage):
         """Текст предупреждения для shell: sudo включен, а пароля в связке нет."""
         if not self.sudo_checked():
             return None
-        default_iid = self.bundle_iid()
+        default_iid = (
+            self._ctx.ssh.bundle_iid if self._ctx is not None else self.bundle_iid()
+        )
         has_pwd = False
         if default_iid:
             try:

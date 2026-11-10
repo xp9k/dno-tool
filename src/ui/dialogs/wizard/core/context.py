@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 from types import MappingProxyType
 from uuid import uuid4
-from src.workers.setup.types import INSTALLERS
+from src.workers.setup.types import INSTALLERS, PreparePlan
 from src.config.settings import DEFAULT_VNC_SERVER
 
 
@@ -83,6 +83,8 @@ class InstallPlan:
     ssh_settings: tuple = ()
     credential_bundles: tuple = field(default=(), repr=False)
     service_options: tuple = ()
+    # PreparePlan шага «Подготовка» (None - сервис не выбран).
+    prepare: PreparePlan | None = field(default=None, repr=False)
     run_id: str = field(default_factory=lambda: uuid4().hex)
 
     def __post_init__(self):
@@ -115,6 +117,9 @@ class InstallResult:
     service_col_map: dict = field(default_factory=dict)  # service -> col
     host_logs: dict = field(default_factory=dict)  # iid -> {service: output}
     ran: bool = False
+    # iid -> связка: хосты, где подготовка и проверочный вход прошли;
+    # записи хостов получают связку при сохранении мастера.
+    bundle_assignments: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -123,7 +128,7 @@ class WizardContext:
 
     mode: str = "fresh"  # fresh | existing
     services: Dict[str, bool] = field(
-        default_factory=lambda: {item.key: True for item in INSTALLERS}
+        default_factory=lambda: {item.key: item.enabled_by_default for item in INSTALLERS}
     )
     vnc_server: str = DEFAULT_VNC_SERVER
     hosts_data: list = field(default_factory=list)
@@ -137,5 +142,6 @@ class WizardContext:
     vnc: VncState = field(default_factory=VncState)
     packages: List[str] = field(default_factory=list)
     service_options: dict = field(default_factory=dict)
+    prepare: PreparePlan = field(default_factory=PreparePlan, repr=False)
     install_plan: InstallPlan | None = None
     install_result: InstallResult = field(default_factory=InstallResult)

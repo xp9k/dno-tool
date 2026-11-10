@@ -38,6 +38,7 @@ from .core.registry import GROUP_TITLES, STEP_ORDER, active_steps, describe
 from .core.store import save_all
 from .setups.hosts_commands import CommandsPage, HostsPage
 from .setups.packages import PackagesPage
+from .setups.prepare import PrepareDevicesPage
 from .setups.remote_install import RemoteInstallPage
 from .setups.ssh import SshSetupPage
 from .setups.veyon import VeyonSetupPage
@@ -124,6 +125,8 @@ class SetupWizardDialog(QDialog):
         self.ssh_page._ssh_bundle_selector.set_current_iid(
             self.ctx.credentials.default_bundle_iid
         )
+        # Общее значение шагов «SSH-ключи» и «Подготовка».
+        self.ctx.ssh.bundle_iid = self.ctx.credentials.default_bundle_iid or ""
         self.veyon_page.set_snapshot(self.ctx.baseline["app"])
         self.commands_page._guard = self.guard
         if self.ctx.mode == "existing":
@@ -151,6 +154,7 @@ class SetupWizardDialog(QDialog):
         self.vnc_page = VncSetupPage(self)
         self.vnc_page.set_guard(self.guard)
         self.packages_page = PackagesPage(self)
+        self.prepare_page = PrepareDevicesPage(self)
         self.remote_page = RemoteInstallPage(self)
         self.remote_page.bind(self.guard, self._collect_all, self.veyon_service)
         self.remote_page.install_state_changed.connect(
@@ -166,6 +170,7 @@ class SetupWizardDialog(QDialog):
             "local_ssh": self.ssh_page,
             "local_veyon": self.veyon_page,
             "local_vnc": self.vnc_page,
+            "remote_prepare": self.prepare_page,
             "remote_packages": self.packages_page,
             "remote": self.remote_page,
             "summary": None,  # строится в _build_summary_page
@@ -378,7 +383,10 @@ class SetupWizardDialog(QDialog):
 
         self._service_checkboxes = {}
         for descriptor in INSTALLERS:
-            checkbox = QCheckBox(descriptor.label + " — установка и настройка")
+            checkbox = QCheckBox(
+                descriptor.intro_text
+                or descriptor.label + " — установка и настройка"
+            )
             checkbox.setChecked(self.ctx.services.get(descriptor.key, False))
             checkbox.toggled.connect(self._on_services_changed)
             self._service_checkboxes[descriptor.key] = checkbox
@@ -483,6 +491,8 @@ class SetupWizardDialog(QDialog):
             html += f"<p><b>VNC:</b> {self.vnc_page.summary_html(self.ctx)}</p>"
         else:
             html += "<p><b>VNC:</b> не выбран</p>"
+        if self.ctx.services.get("prepare"):
+            html += f"<p><b>Подготовка:</b> {self.prepare_page.summary_html(self.ctx)}</p>"
         html += f"<p>{self.remote_page.summary_html(self.ctx)}</p>"
         html += "<br><p>Нажмите «Готово», чтобы сохранить настройки.</p>"
         html += "<p>Отмена отбрасывает черновик. Выполненные действия с ключами, службами и пакетами сохраняются.</p>"
@@ -530,7 +540,13 @@ class SetupWizardDialog(QDialog):
     def _transition(self, target):
         if self.guard.is_active() or self._closing:
             return False
-        if not self._collect_page(self._active_steps[self._current_step]):
+        # Назад - без проверки: иначе не вернуться на шаг, где исправляется
+        # причина отказа (например, связка по умолчанию на «SSH-ключи»).
+        # Вперёд, «Установка» и «Готово» по-прежнему проверяют шаги.
+        backward = target < self._current_step
+        if not self._collect_page(
+            self._active_steps[self._current_step], validate=not backward
+        ):
             return False
         if self._active_steps[target] == "remote" and not self._collect_all():
             return False

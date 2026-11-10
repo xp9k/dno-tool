@@ -5,7 +5,12 @@
 """
 
 from PySide6.QtCore import Qt, QSize, Signal, QObject, Slot
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QMenu,
+    QTabWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
@@ -36,23 +41,17 @@ from src.workers.setup.worker import (
 from ..core.context import InstallPlan, WizardContext
 from ..core.registry import REMOTE_SERVICES, SERVICE_LABELS
 from .base import SetupPage, hint_label
+from .install_report import (
+    STATUS_ICONS,
+    STATUS_TEXTS,
+    ReportView,
+    details_html,
+    host_status,
+    short_line,
+    text_report,
+)
 
-
-STATUS_ICONS = {
-    RESULT_SUCCESS: "result_success",
-    RESULT_ERROR: "result_failure",
-    RESULT_IGNORE: "result_skip",
-    RESULT_ABORT: "result_cancelled",
-    RESULT_WAITING: "result_pending",
-}
 STATUS_PENDING_ICON = "result_pending"
-STATUS_TEXTS = {
-    RESULT_SUCCESS: "Успех",
-    RESULT_ERROR: "Неудача",
-    RESULT_IGNORE: "Пропуск",
-    RESULT_ABORT: "Отмена",
-    RESULT_WAITING: "Ожидает готовности",
-}
 
 
 class _RunResultReceiver(QObject):
@@ -100,7 +99,8 @@ class RemoteInstallPage(SetupPage):
         hint = hint_label(
             "Отметьте хосты в дереве для установки. Ключи (SSH и Veyon) готовятся "
             "на локальных шагах и только деплоятся на хосты. Статус обновляется "
-            "в таблице по мере выполнения. Двойной клик по строке - детальный лог хоста.\n"
+            "в таблице по мере выполнения; подробности выбранного хоста - под "
+            "таблицей, двойной клик по строке - полный журнал хоста.\n"
             "Если включено sudo (на шаге SSH-ключи или в колонке Sudo у хоста), "
             "установка пакетов выполняется через sudo с паролем хоста."
         )
@@ -145,9 +145,22 @@ class RemoteInstallPage(SetupPage):
         )
         self._remote_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._remote_table.cellDoubleClicked.connect(self._on_table_double_click)
+        self._remote_table.currentCellChanged.connect(self._on_current_cell_changed)
         table_layout.addWidget(self._remote_table, 1)
 
         btn_row = QHBoxLayout()
+        self._report_btn = QPushButton("Отчёт")
+        report_menu = QMenu(self._report_btn)
+        self._copy_host_action = report_menu.addAction(
+            "Копировать выбранный хост", self._copy_host_report
+        )
+        report_menu.addAction("Копировать всё", self._copy_all_report)
+        report_menu.addAction("Сохранить всё…", self._save_report)
+        report_menu.aboutToShow.connect(
+            lambda: self._copy_host_action.setEnabled(self._selected_iid() is not None)
+        )
+        self._report_btn.setMenu(report_menu)
+        btn_row.addWidget(self._report_btn)
         btn_row.addStretch()
         self._remote_install_btn = QPushButton("Установить")
         self._remote_install_btn.setIcon(_icon_from_key("result_executing"))
@@ -164,23 +177,41 @@ class RemoteInstallPage(SetupPage):
 
         top_splitter.addWidget(table_wrap)
         top_splitter.setStretchFactor(1, 1)
-        layout.addWidget(top_splitter, 3)
 
-        log_label = QLabel("Общий лог:")
-        log_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(log_label)
-
+        # Как в диагностике: подробности выбранного хоста и общий журнал.
+        self._details = ReportView()
+        self._details.setOpenLinks(False)
+        self._details.anchorClicked.connect(self._on_details_link)
+        self._details.setPlaceholderText(
+            "Выберите хост в таблице: здесь появятся результаты его сервисов, "
+            "сначала проблемы."
+        )
         self._remote_log = QPlainTextEdit()
         self._remote_log.setReadOnly(True)
-        self._remote_log.setMaximumHeight(160)
+        self._remote_log.setMaximumBlockCount(2000)
         self._remote_log.setStyleSheet("font-family: monospace;")
-        layout.addWidget(self._remote_log)
+        self._bottom_tabs = QTabWidget()
+        self._bottom_tabs.setDocumentMode(True)
+        self._bottom_tabs.addTab(self._details, "Подробности")
+        self._bottom_tabs.addTab(self._remote_log, "Журнал")
+        self._bottom_tabs.currentChanged.connect(self._on_tab_changed)
+        vertical = QSplitter(Qt.Orientation.Vertical)
+        vertical.addWidget(top_splitter)
+        vertical.addWidget(self._bottom_tabs)
+        vertical.setStretchFactor(0, 3)
+        vertical.setStretchFactor(1, 2)
+        layout.addWidget(vertical, 1)
 
         self._service_col_map: dict = {}
         self._host_row_map: dict = {}
         self._row_host_map: dict = {}
         self._row_host_name: dict = {}
         self._host_logs: dict = {}
+        # iid -> {service: код}; раскрытые записи подробностей (iid, service).
+        self._host_codes: dict = {}
+        self._expanded: set = set()
+        self._show_successes = False
+        self._details_html = ""
         self._worker = None
         self._thread = None
         self._remote_worker = None
@@ -188,7 +219,11 @@ class RemoteInstallPage(SetupPage):
         self._install_active = False
         self._install_ran = False
         self._guard = None
-        self._ctx_services = {key: True for key in REMOTE_SERVICES}
+        from src.workers.setup.types import INSTALLERS
+
+        self._ctx_services = {
+            item.key: item.enabled_by_default for item in INSTALLERS
+        }
         self._pending_ctx = None
         self._last_ctx = None
 
@@ -293,6 +328,7 @@ class RemoteInstallPage(SetupPage):
                     packages=ctx.packages,
                     service_options=ctx.service_options,
                     credentials=asdict(ctx.credentials),
+                    prepare=asdict(ctx.prepare),
                 ),
                 sort_keys=True,
                 default=str,
@@ -356,11 +392,16 @@ class RemoteInstallPage(SetupPage):
         self._row_host_map = {}
         self._row_host_name = {}
         self._host_logs = {}
+        self._host_codes = {}
+        self._expanded = set()
+        self._show_successes = False
 
         for row, dev in enumerate(devices):
             self._remote_table.insertRow(row)
             host_item = QTableWidgetItem(dev.name or dev.host)
             host_item.setToolTip(dev.host)
+            host_item.setData(Qt.ItemDataRole.UserRole, dev.name or dev.host)
+            host_item.setIcon(_icon_from_key(STATUS_PENDING_ICON))
             self._remote_table.setItem(row, 0, host_item)
             iid = getattr(dev, "iid", None) or dev.host
             self._host_row_map[iid] = row
@@ -375,6 +416,7 @@ class RemoteInstallPage(SetupPage):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._remote_table.setItem(row, col, item)
             self._host_logs[iid] = {}
+        self._show_details()
 
     def _selected_vnc_server(self, ctx=None) -> str:
         if ctx is not None:
@@ -490,11 +532,12 @@ class RemoteInstallPage(SetupPage):
             else ctx.baseline["app"].ssh.use_sudo,
             ssh_settings=tuple(asdict(ctx.baseline["app"].ssh).items()),
             default_bundle_iid=ctx.ssh.bundle_iid
-            if services.get("ssh")
+            if services.get("ssh") or services.get("prepare")
             else ctx.baseline["app"].credentials.default_bundle_iid,
             credential_bundles=tuple(
                 (b.iid, b.login, b.password) for b in ctx.credentials.bundles
             ),
+            prepare=ctx.prepare if services.get("prepare") else None,
         )
         ctx.install_plan = plan
         self._run_id = plan.run_id
@@ -591,6 +634,7 @@ class RemoteInstallPage(SetupPage):
             veyon_private_key=plan.veyon_private_key,
             ssh_settings=plan.ssh_settings,
             service_options=plan.service_options,
+            prepare=plan.prepare,
         )
         self._remote_worker = self._worker
         self._thread = QThread()
@@ -672,15 +716,32 @@ class RemoteInstallPage(SetupPage):
             item.setIcon(_icon_from_key(icon_key))
         item.setData(Qt.ItemDataRole.UserRole, code)
         item.setText("")
-        item.setToolTip(f"{text}\n\n{output[-800:]}" if output else text)
+        short = short_line(output, code)
+        item.setToolTip(f"{text}\n{short}" if short else text)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._host_logs.setdefault(iid, {})[service] = output
+        self._host_codes.setdefault(iid, {})[service] = code
+        self._update_host_item(iid)
+        if iid == self._selected_iid():
+            self._show_details()
+        if service == "prepare" and self._pending_ctx is not None:
+            self._remember_prepared(self._pending_ctx, iid, code)
         if self._pending_ctx is not None:
             try:
                 self.collect(self._pending_ctx)
             except Exception:
                 pass
+
+    @staticmethod
+    def _remember_prepared(ctx, iid, code) -> None:
+        """Подготовленный хост получит связку «после» при сохранении мастера."""
+        plan = ctx.install_plan
+        prepare = getattr(plan, "prepare", None)
+        if prepare is None:
+            return
+        if code in (RESULT_SUCCESS, RESULT_IGNORE):
+            ctx.install_result.bundle_assignments[iid] = prepare.after_bundle_iid
 
     def _on_host_log(self, host, service, message) -> None:
         """Краткое сообщение в общий лог + сохранение info в детальный лог хоста."""
@@ -701,6 +762,129 @@ class RemoteInstallPage(SetupPage):
 
     def _on_remote_error(self, msg) -> None:
         self._remote_log.appendPlainText(f"ОШИБКА: {msg}")
+        if self._bottom_tabs.currentIndex() != 1:
+            self._bottom_tabs.setTabIcon(1, _icon_from_key("result_failure"))
+
+    def _on_tab_changed(self, index) -> None:
+        if index == 1:
+            self._bottom_tabs.setTabIcon(1, QIcon())
+
+    # --- компактный отчёт ---
+
+    def _report_services(self) -> list:
+        return [
+            (svc, self._remote_table.horizontalHeaderItem(col).text())
+            for svc, col in sorted(self._service_col_map.items(), key=lambda kv: kv[1])
+        ]
+
+    def _selected_iid(self):
+        return self._row_host_map.get(self._remote_table.currentRow())
+
+    def _host_entry(self, iid) -> tuple:
+        item = self._remote_table.item(self._host_row_map[iid], 0)
+        name = item.data(Qt.ItemDataRole.UserRole) if item else iid
+        logs = self._host_logs.get(iid, {})
+        return (
+            name,
+            self._row_host_name.get(iid, ""),
+            self._host_codes.get(iid, {}),
+            {k: v for k, v in logs.items() if k != "_info"},
+            list(logs.get("_info") or ()),
+        )
+
+    def _update_host_item(self, iid) -> None:
+        row = self._host_row_map.get(iid)
+        item = self._remote_table.item(row, 0) if row is not None else None
+        if item is None:
+            return
+        codes = self._host_codes.get(iid, {})
+        status, icon = host_status(codes.get(svc) for svc in self._service_col_map)
+        item.setIcon(_icon_from_key(icon))
+        item.setToolTip(f"{self._row_host_name.get(iid, '')}\nИтог: {status}")
+
+    def _expanded_for(self, iid) -> set:
+        return {key for owner, key in self._expanded if owner == iid}
+
+    def _show_details(self) -> None:
+        iid = self._selected_iid()
+        text = ""
+        if iid in self._host_row_map:
+            name, host, codes, outputs, info = self._host_entry(iid)
+            text = details_html(
+                name,
+                host,
+                self._report_services(),
+                codes,
+                outputs,
+                info,
+                self._expanded_for(iid),
+                self._show_successes,
+            )
+        if text == self._details_html:
+            return
+        self._details_html = text
+        bar = self._details.verticalScrollBar()
+        position = bar.value()
+        self._details.setHtml(text)
+        bar.setValue(position)
+
+    def _on_current_cell_changed(self, row, col, *_previous) -> None:
+        """Щелчок по ячейке сервиса раскрывает его запись в подробностях."""
+        iid = self._row_host_map.get(row)
+        service = next(
+            (svc for svc, c in self._service_col_map.items() if c == col), None
+        )
+        code = self._host_codes.get(iid, {}).get(service) if iid else None
+        if code is not None:
+            self._expanded.add((iid, service))
+            if code in (RESULT_SUCCESS, RESULT_IGNORE):
+                self._show_successes = True
+        self._show_details()
+        if code is not None:
+            self._bottom_tabs.setCurrentIndex(0)
+            self._details.scrollToAnchor(service)
+
+    def _on_details_link(self, url) -> None:
+        iid = self._selected_iid()
+        target = url.toString()
+        if iid is None:
+            return
+        if target == "toggle:successes":
+            self._show_successes = not self._show_successes
+        elif target.startswith("toggle:"):
+            self._expanded.symmetric_difference_update({(iid, target.split(":", 1)[1])})
+        elif target == "log:open":
+            self._on_table_double_click(self._host_row_map[iid], 0)
+            return
+        self._show_details()
+
+    def _report_text(self, iids) -> str:
+        from datetime import datetime
+
+        header = f"Установка сервисов мастера настройки, {datetime.now():%d.%m.%Y %H:%M:%S}\n"
+        return header + text_report(
+            [self._host_entry(iid) for iid in iids], self._report_services()
+        )
+
+    def _copy_host_report(self) -> None:
+        iid = self._selected_iid()
+        if iid is not None:
+            QApplication.clipboard().setText(self._report_text([iid]))
+
+    def _copy_all_report(self) -> None:
+        QApplication.clipboard().setText(self._report_text(list(self._host_row_map)))
+
+    def _save_report(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Сохранить отчёт", "dno-tool-setup.txt", "Текст (*.txt)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as stream:
+                stream.write(self._report_text(list(self._host_row_map)))
+        except OSError as error:
+            QMessageBox.warning(self, "Отчёт", f"Не удалось сохранить отчёт:\n{error}")
 
     def _on_remote_install_finished(self) -> None:
         """Завершение установки - разблокировать кнопки."""

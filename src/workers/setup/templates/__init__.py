@@ -4,6 +4,10 @@ from .ssh import (
     AUTHORIZED_KEYS_SCRIPT as AUTHORIZED_KEYS_SCRIPT,
 )
 
+from .prepare import (
+    PREPARE_SCRIPT as PREPARE_SCRIPT,
+)
+
 from .shell import (
     _as_user_func as _as_user_func,
     _as_user_call as _as_user_call,

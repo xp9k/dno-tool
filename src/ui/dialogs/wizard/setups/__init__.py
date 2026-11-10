@@ -3,6 +3,7 @@
 from .base import SetupPage, clear_layout, hint_label
 from .hosts_commands import CommandsPage, HostsPage
 from .packages import PackagesPage
+from .prepare import PrepareDevicesPage
 from .remote_install import RemoteInstallPage
 from .ssh import SshSetupPage
 from .veyon import VeyonSetupPage
@@ -18,5 +19,6 @@ __all__ = [
     "VeyonSetupPage",
     "VncSetupPage",
     "PackagesPage",
+    "PrepareDevicesPage",
     "RemoteInstallPage",
 ]
