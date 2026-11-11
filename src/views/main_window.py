@@ -3740,6 +3740,8 @@ class MainWindow(QWidget):
 
         if not selected_data:
             return
+        if self._reject_if_command_running():
+            return
 
         self.execute_command(devices, selected_data)
 
@@ -3903,7 +3905,11 @@ class MainWindow(QWidget):
             # Fallback: прерываем напрямую если worker_bridge не использовался
             logger.debug("MainWindow: Aborting worker directly (fallback)")
             self.worker.abort()
-        else:
+        elif not (
+            getattr(self, "current_node_worker_id", None)
+            or getattr(self, "node_worker", None)
+        ):
+            # Локальная часть могла уже завершиться: тогда отменяются только ноды.
             logger.warning("MainWindow: No worker to abort")
 
         # Прерывание node-worker (ноды выполняют независимо от локальных)
@@ -5267,8 +5273,23 @@ class MainWindow(QWidget):
         pass
 
     def on_worker_finished(self, worker_id: str, result: Any) -> None:
-        """Вызывается при завершении worker"""
+        """Вызывается при завершении worker.
+
+        Задание на локальных хостах и на нодах идёт двумя воркерами. Итог и
+        возврат кнопки «Выполнить» - только после завершения обоих: иначе
+        можно было запустить новое задание, пока второй воркер ещё пишет
+        результаты в таблицу.
+        """
         logger.debug(f"MainWindow: Worker {worker_id} finished")
+        if worker_id == getattr(self, "current_worker_id", None):
+            self.current_worker_id = None
+            self.worker = None
+        elif worker_id == getattr(self, "current_node_worker_id", None):
+            self.current_node_worker_id = None
+            self.node_worker = None
+        if self._command_running():
+            logger.debug("MainWindow: другая часть задания ещё выполняется")
+            return
         self.on_execute_thread_finished()
 
         # Статус-строка: итог выполнения команд.
