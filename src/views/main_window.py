@@ -598,6 +598,8 @@ class MainWindow(QWidget):
                 self._refresh_veyon_ui_visibility()
             if etype == "config":
                 self._apply_kaomoji_visibility()
+                if hasattr(self, "listview"):
+                    self.listview.apply_caption_settings()
         except Exception as e:
             logger.error(f"MainWindow: _on_data_saved handler error: {e}")
 

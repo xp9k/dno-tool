@@ -75,6 +75,11 @@ from src.workers.veyon import get_thumbnail_timer_manager
 from src.services.thumbnails.types import ThumbnailResult, ThumbnailStatus
 from src.services.hosts.host_info_service import get_host_info_service
 from src.ui.widgets.device_tree import LOCAL_NODE_IID
+from src.ui.widgets.host_caption import (
+    HostCaptionDelegate,
+    caption_line_count,
+    find_caption_delegate,
+)
 
 
 # Кэш оформительских слоёв рамки миниатюр: SVG-оверлей (рамка поверх
@@ -792,13 +797,12 @@ class DynamicHeightListView(QListView):
         super().mousePressEvent(event)
 
     def event(self, ev):
-        """Перехват ToolTip: живой тултип из HostInfoService.
+        """Перехват ToolTip: тултип из кэша HostInfoService.
 
-        При наведении на устройство тултип собирается из кэша; для онлайн-хоста
-        с протухшим/отсутствующим кэшем запускается фоновый запрос — когда
-        данные придут, тултип перерисуется (если курсор ещё на этом элементе).
-        Node-хосты удалённых нод обслуживаются тем же сервисом (маршрутизация
-        в request_info: live-данные через ноду-владельца, не SSH).
+        Наведение сведения не запрашивает (решение пользователя): их собирает
+        пинг при галочке «Запрашивать сведения при пинге»
+        (DeviceListView._caption_on_online). Если ответ придёт, пока курсор
+        на хосте, тултип перерисуется (_on_host_info_updated).
         """
         if ev.type() == QEvent.Type.ToolTip:
             try:
@@ -818,7 +822,6 @@ class DynamicHeightListView(QListView):
                             item.thumbnail_tooltip(svc.build_tooltip(device)),
                             self,
                         )
-                        svc.request_info(device)
                         return True
             except RuntimeError:
                 return super().event(ev)
@@ -859,6 +862,16 @@ class DeviceListView(QWidget):
         self._auto_collapsed: set[str] = (
             set()
         )  # подмножество _collapsed, скрытое фильтром «только онлайн»
+        # Поля подписи под значком (вкладка «Отображение» настроек).
+        self._caption_fields: tuple[str, ...] = self._configured_caption_fields()
+        self._caption_full_name: bool = self._configured_full_name()
+        # Запрос сведений при пинге (галочка на вкладке «Отображение»).
+        self._query_info_on_ping: bool = self._configured_query_on_ping()
+        # Ответы пинга и сведений приходят по одному: перерисовка схлопывается.
+        self._caption_repaint_timer = QTimer(self)
+        self._caption_repaint_timer.setSingleShot(True)
+        self._caption_repaint_timer.setInterval(150)
+        self._caption_repaint_timer.timeout.connect(self._repaint_views)
 
         self._setup_ui()
         get_host_ping_timer_manager().online_updated.connect(
@@ -895,8 +908,128 @@ class DeviceListView(QWidget):
         # ещё на соответствующем элементе (DeviceListView/DeviceTreeView).
         get_host_info_service().info_updated.connect(self._on_host_info_updated)
 
+    # --------- подписи хостов ----------
+    @staticmethod
+    def _configured_caption_fields() -> tuple[str, ...]:
+        from src.config.settings import DEFAULT_HOST_CAPTIONS, normalize_host_captions
+
+        display = getattr(config.app, "display", None)
+        # Поля подписи зависят от галочки «Запрашивать сведения при пинге»:
+        # без неё только пинги и подпись по умолчанию (имя).
+        if not bool(getattr(display, "query_info_on_ping", False)):
+            return tuple(DEFAULT_HOST_CAPTIONS)
+        return tuple(
+            normalize_host_captions(getattr(display, "host_captions", ["name"]))
+        )
+
+    @staticmethod
+    def _configured_full_name() -> bool:
+        display = getattr(config.app, "display", None)
+        return getattr(display, "user_mode", "login") == "full"
+
+    @staticmethod
+    def _configured_query_on_ping() -> bool:
+        display = getattr(config.app, "display", None)
+        return bool(getattr(display, "query_info_on_ping", False))
+
+    def caption_fields(self) -> tuple[str, ...]:
+        """Текущие поля подписи хостов."""
+        return self._caption_fields
+
+    def apply_caption_settings(self) -> None:
+        """Перечитать подписи из настроек: высота плиток, перерисовка, запросы."""
+        fields = self._configured_caption_fields()
+        changed = fields != self._caption_fields
+        self._caption_fields = fields
+        full_name = self._configured_full_name()
+        if full_name != self._caption_full_name:
+            self._caption_full_name = full_name
+            for info in self._categories.values():
+                delegate = find_caption_delegate(info["view"])
+                if delegate is not None:
+                    delegate.set_full_name(full_name)
+        if changed:
+            for info in self._categories.values():
+                view = info["view"]
+                delegate = find_caption_delegate(view)
+                if delegate is not None:
+                    delegate.set_fields(fields)
+                self._update_view_grid(view)
+            self._update_all_sections_height()
+        enabled = self._configured_query_on_ping()
+        turned_on = enabled and not self._query_info_on_ping
+        self._query_info_on_ping = enabled
+        if turned_on:
+            # Не ждать следующего пинга: хосты, уже известные как «в сети».
+            self._request_online_infos()
+        self._repaint_views()
+
+    @staticmethod
+    def _info_max_age() -> float:
+        """Допустимый возраст сведений при запросе от пинга: чуть меньше
+        интервала пинга, чтобы каждый пинг «в сети» обновлял сведения."""
+        interval = float(getattr(config.app.network, "ping_interval", 10) or 10)
+        return max(1.0, interval - 1.0)
+
+    def _request_info(self, device: DeviceModel) -> None:
+        try:
+            get_host_info_service().request_info(
+                device, background=True, max_age=self._info_max_age()
+            )
+        except Exception as e:
+            logger.debug(f"DeviceListView: запрос сведений {device.host}: {e}")
+
+    def _request_online_infos(self) -> None:
+        """Запросить сведения всех хостов списка, которые сейчас в сети."""
+        seen = set()
+        for info in self._categories.values():
+            model = info["model"]
+            for row in range(model.rowCount()):
+                device = getattr(model.item(row), "device", None)
+                if device is None or not device.is_online:
+                    continue
+                key = device_identity(device)
+                if key not in seen:
+                    seen.add(key)
+                    self._request_info(device)
+        self._schedule_caption_repaint()
+
+    def _schedule_caption_repaint(self) -> None:
+        if not self._caption_repaint_timer.isActive():
+            self._caption_repaint_timer.start()
+
+    def _repaint_views(self) -> None:
+        for info in self._categories.values():
+            try:
+                info["view"].viewport().update()
+            except RuntimeError:
+                pass
+
+    def _caption_on_online(self, device: DeviceModel, is_online: bool) -> None:
+        """Результат пинга: запрос сведений и перерисовка подписи.
+
+        С галочкой «Запрашивать сведения при пинге» каждый пинг «в сети»
+        запускает сбор сведений (SSH в служебном пуле, не в потоке проверки
+        доступности: тот один на все хосты и ждать SSH не должен). Без
+        галочки только пинги, сведения не собираются (наведение их тоже
+        не запрашивает).
+        """
+        fields = self._caption_fields
+        query = self._query_info_on_ping
+        if is_online and query:
+            self._request_info(device)
+        elif not is_online and (query or "user" in fields):
+            # Выключенный компьютер: прежний пользователь больше не верен.
+            get_host_info_service().invalidate(
+                getattr(device, "iid", None) or "", getattr(device, "node_iid", None)
+            )
+        if "status" in fields or "user" in fields:
+            self._schedule_caption_repaint()
+
     def _on_host_info_updated(self, host: str):
         """Данные хоста пришли — перерисовать тултип, если курсор на этом хосте."""
+        if "user" in self._caption_fields:
+            self._schedule_caption_repaint()
         if not host:
             return
         try:
@@ -965,6 +1098,7 @@ class DeviceListView(QWidget):
                 pass
         else:
             get_thumbnail_timer_manager().on_host_online(device, is_online)
+        self._caption_on_online(device, is_online)
 
     def _setup_ui(self):
         # Main layout
@@ -1218,6 +1352,11 @@ class DeviceListView(QWidget):
 
         view.setUniformItemSizes(True)
         view.setWordWrap(True)
+        # Плитку рисует делегат подписей (значок + строки из настроек).
+        view.setItemDelegate(
+            HostCaptionDelegate(view, self._caption_fields, self._caption_full_name)
+        )
+        view.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         # model
         model = QStandardItemModel()
@@ -1717,10 +1856,10 @@ class DeviceListView(QWidget):
         fm = view.fontMetrics()
         text_h = fm.height()
         pad = self._calc_pad()
+        lines = caption_line_count(self._caption_fields)
         tile_w = self._icon_size.width() + pad
-        tile_h = self._icon_size.height() + text_h + pad
+        tile_h = self._icon_size.height() + lines * text_h + pad
 
-        total_items = view.model().rowCount()
         view.setGridSize(QSize(tile_w, tile_h))
 
     def set_online_only(self, online_only: bool):

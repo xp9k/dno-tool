@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QScrollArea,
     QFrame,
+    QTabWidget,
 )
 from PySide6.QtCore import Qt, QTimer
 from src.config import config
@@ -406,12 +407,24 @@ class ConfigDialog(QDialog):
         self.setWindowTitle("Настройки")
         self.setup_ui()
 
+    @staticmethod
+    def _make_tab(tabs: QTabWidget, title: str) -> QFormLayout:
+        """Вкладка с формой; строки прижаты кверху, свободное место снизу."""
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        form = QFormLayout()
+        outer.addLayout(form)
+        outer.addStretch(1)
+        tabs.addTab(page, title)
+        return form
+
     def setup_ui(self):
         main_layout = QVBoxLayout()
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
 
-        # Create SSH settings group
-        ssh_group = QGroupBox("Настройки SSH по умолчанию")
-        ssh_layout = QFormLayout()
+        # Вкладка «SSH»: подключение по умолчанию.
+        ssh_layout = self._make_tab(self.tabs, "SSH")
 
         self.port = QSpinBox()
         self.port.setRange(1, 65535)
@@ -496,12 +509,8 @@ class ConfigDialog(QDialog):
         ssh_layout.addRow(self.use_sudo)
         ssh_layout.addRow("Локаль:", self.locale_combo)
 
-        ssh_group.setLayout(ssh_layout)
-        main_layout.addWidget(ssh_group)
-
-        # Create General settings group
-        general_group = QGroupBox("Общие настройки")
-        general_layout = QFormLayout()
+        # Вкладка «Общие»: потоки и проверка доступности.
+        general_layout = self._make_tab(self.tabs, "Общие")
 
         self.thread_count = ThreadCountSlider(value=config.app.network.thread_count)
         self.thread_count.setToolTip(
@@ -529,16 +538,6 @@ class ConfigDialog(QDialog):
         self.ping_timeout.setSingleStep(0.5)
         self.ping_timeout.setSuffix(" сек")
 
-        self.expand_trees = QCheckBox()
-        self.expand_trees.setChecked(config.app.expand)
-
-        self.kaomoji_enabled = QCheckBox()
-        self.kaomoji_enabled.setChecked(getattr(config.app, "kaomoji_enabled", True))
-        self.kaomoji_enabled.setToolTip(
-            "Показывать каомодзи-эмоции в статусной строке\n"
-            "(меняются в зависимости от результата операции)"
-        )
-
         # Add fields to General group
         general_layout.addRow(
             "Потоки статусов и служебных операций:", self.thread_count
@@ -554,16 +553,13 @@ class ConfigDialog(QDialog):
         general_layout.addRow(restart_hint)
         general_layout.addRow("Интервал пинга:", self.ping_interval)
         general_layout.addRow("Таймаут пинга:", self.ping_timeout)
-        general_layout.addRow("Разворачивать деревья:", self.expand_trees)
-        general_layout.addRow("Каомодзи в статус-строке:", self.kaomoji_enabled)
 
-        general_group.setLayout(general_layout)
-        main_layout.addWidget(general_group)
+        # Вкладка «Отображение»: подписи хостов, деревья, каомодзи.
+        self._setup_display_tab()
 
         # Внешний вид: тема оформления (QPalette). Выбор применяется сразу,
         # сохраняется в конфиг только по «Сохранить», «Отмена» возвращает назад.
-        appearance_group = QGroupBox("Внешний вид")
-        appearance_layout = QFormLayout()
+        appearance_layout = self._make_tab(self.tabs, "Внешний вид")
         from src.ui.theme_manager import (
             FALLBACK_THEME_ID,
             SYSTEM_THEME_ID,
@@ -608,8 +604,6 @@ class ConfigDialog(QDialog):
         )
         self.icon_theme_combo.currentIndexChanged.connect(self._on_icon_theme_changed)
         appearance_layout.addRow("Иконки:", self.icon_theme_combo)
-        appearance_group.setLayout(appearance_layout)
-        main_layout.addWidget(appearance_group)
 
         # Дебаунс live-применения тем: каждое переключение комбобокса
         # (стрелки/колесо по списку) иначе синхронно делает полный refresh
@@ -635,6 +629,115 @@ class ConfigDialog(QDialog):
 
         main_layout.addWidget(buttons)
         self.setLayout(main_layout)
+
+    def _setup_display_tab(self) -> None:
+        """Вкладка «Отображение»: что подписывать под значками хостов и вид окна."""
+        from src.config.settings import (
+            HOST_CAPTION_FIELDS,
+            HOST_CAPTION_USER_MODES,
+            normalize_host_captions,
+            normalize_user_mode,
+        )
+
+        page = QWidget()
+        outer = QVBoxLayout(page)
+
+        captions_group = QGroupBox("Подписи хостов в списке")
+        captions_layout = QVBoxLayout(captions_group)
+        display = getattr(config.app, "display", None)
+
+        # Главная галочка: без неё только пинги и подпись по умолчанию
+        # (имя), поля подписи от неё зависят.
+        self.query_info_on_ping = QCheckBox("Запрашивать сведения при пинге")
+        self.query_info_on_ping.setChecked(
+            bool(getattr(display, "query_info_on_ping", False))
+        )
+        self.query_info_on_ping.setToolTip(
+            "Каждый пинг, на который хост ответил, запускает сбор сведений\n"
+            "по SSH (вошедший пользователь, время работы и т. п.).\n"
+            "Сведения обновляются с интервалом пинга, но на каждый пинг\n"
+            "добавляется SSH-подключение, и пользователь появляется позже\n"
+            "точки состояния.\n\n"
+            "Без галочки выполняются только пинги."
+        )
+        captions_layout.addWidget(self.query_info_on_ping)
+
+        current = set(
+            normalize_host_captions(getattr(display, "host_captions", ["name"]))
+        )
+        self.caption_checks: Dict[str, QCheckBox] = {}
+        tooltips = {
+            "status": "Цветная точка перед текстом подписи:\n"
+            "зелёная - хост в сети, серая - не в сети.",
+            "name": "Имя хоста из списка.",
+            "host": "Адрес хоста (IP или имя в сети).",
+            "user": "Пользователь, вошедший в систему на компьютере\n"
+            "(локальный или графический сеанс, не вход по SSH).",
+        }
+        fields_layout = QVBoxLayout()
+        fields_layout.setContentsMargins(20, 0, 0, 0)
+        self.user_mode_combo = QComboBox()
+        for mode, mode_label in HOST_CAPTION_USER_MODES:
+            self.user_mode_combo.addItem(mode_label, mode)
+        mode_index = self.user_mode_combo.findData(
+            normalize_user_mode(getattr(display, "user_mode", "login"))
+        )
+        self.user_mode_combo.setCurrentIndex(max(0, mode_index))
+        self.user_mode_combo.setToolTip(
+            "Учётная запись - логин (teacher).\n"
+            "Полное имя - из сведений учётной записи на хосте (GECOS);\n"
+            "если оно не задано, показывается логин."
+        )
+        for key, label in HOST_CAPTION_FIELDS:
+            check = QCheckBox(label)
+            check.setChecked(key in current)
+            check.setToolTip(tooltips.get(key, ""))
+            self.caption_checks[key] = check
+            if key == "user":
+                row = QHBoxLayout()
+                row.addWidget(check)
+                row.addWidget(self.user_mode_combo)
+                row.addStretch(1)
+                fields_layout.addLayout(row)
+            else:
+                fields_layout.addWidget(check)
+        captions_layout.addLayout(fields_layout)
+        self.caption_checks["user"].toggled.connect(self._sync_query_dependents)
+
+        self.query_info_on_ping.toggled.connect(self._sync_query_dependents)
+        self._sync_query_dependents()
+        outer.addWidget(captions_group)
+
+        view_form = QFormLayout()
+        self.expand_trees = QCheckBox()
+        self.expand_trees.setChecked(config.app.expand)
+        self.kaomoji_enabled = QCheckBox()
+        self.kaomoji_enabled.setChecked(getattr(config.app, "kaomoji_enabled", True))
+        self.kaomoji_enabled.setToolTip(
+            "Показывать каомодзи-эмоции в статусной строке\n"
+            "(меняются в зависимости от результата операции)"
+        )
+        view_form.addRow("Разворачивать деревья:", self.expand_trees)
+        view_form.addRow("Каомодзи в статус-строке:", self.kaomoji_enabled)
+        outer.addLayout(view_form)
+        outer.addStretch(1)
+        self.tabs.addTab(page, "Отображение")
+
+    def _sync_query_dependents(self, *_args) -> None:
+        """Поля подписи активны только с запросом сведений при пинге.
+
+        Отметки сохраняются: при включённом запросе они вернутся.
+        """
+        enabled = self.query_info_on_ping.isChecked()
+        for check in self.caption_checks.values():
+            check.setEnabled(enabled)
+        self.user_mode_combo.setEnabled(
+            enabled and self.caption_checks["user"].isChecked()
+        )
+
+    def selected_caption_fields(self) -> List[str]:
+        """Отмеченные поля подписи в каноническом порядке."""
+        return [key for key, check in self.caption_checks.items() if check.isChecked()]
 
     def _on_theme_changed(self, index: int) -> None:
         """Live-применение темы при выборе в комбобоксе (без сохранения).
@@ -806,6 +909,13 @@ class ConfigDialog(QDialog):
 
         config.app.expand = self.expand_trees.isChecked()
         config.app.kaomoji_enabled = self.kaomoji_enabled.isChecked()
+        from src.config.settings import normalize_host_captions
+
+        config.app.display.host_captions = normalize_host_captions(
+            self.selected_caption_fields()
+        )
+        config.app.display.query_info_on_ping = self.query_info_on_ping.isChecked()
+        config.app.display.user_mode = self.user_mode_combo.currentData() or "login"
         from src.ui.theme_manager import FALLBACK_THEME_ID as _FALLBACK_THEME_ID
 
         selected_theme = self.theme_combo.currentData() or _FALLBACK_THEME_ID

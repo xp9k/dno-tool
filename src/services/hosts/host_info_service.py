@@ -1,7 +1,8 @@
 """Host Info Service — фоновый сбор данных хоста для живых тултипов.
 
-По наведении мыши на онлайн-хост (list/tree) сервис выполняет одну короткую
-SSH-команду (batch-скрипт) и кэширует результат с TTL. Тултип собирается из
+Сбор запускает пинг хоста «в сети» при галочке «Запрашивать сведения при
+пинге» (DeviceListView); наведение мыши только показывает кэш. Сервис
+выполняет одну короткую SSH-команду (batch-скрипт) и кэширует результат. Тултип собирается из
 кэша + статических полей устройства (Имя/Хост/Порт/Нода — выбор в меню
 тулбара ViewToolbar). Офлайн-хосты не опрашиваются.
 
@@ -48,6 +49,7 @@ STATIC_TOOLTIP_FIELDS = [
 # Ключи сохраняются в view_state. Порядок = порядок в тултипе.
 TOOLTIP_FIELDS = [
     ("user", "Текущий пользователь"),
+    ("user_full", "Полное имя пользователя"),
     ("login_time", "Время входа"),
     ("uptime", "Время работы системы"),
     ("boot_time", "Время загрузки"),
@@ -75,6 +77,7 @@ class HostInfoSnapshot:
     """Данные хоста, собранные одной SSH-командой."""
 
     user: str = ""
+    user_full: str = ""  # GECOS (поле 5 passwd до запятой) для user
     login_time: str = ""
     uptime: str = ""
     boot_time: str = ""
@@ -88,8 +91,9 @@ class HostInfoSnapshot:
     def field(self, key: str) -> str:
         return getattr(self, key, "") or ""
 
-    def is_expired(self) -> bool:
-        return (time.time() - self.fetched_at) > INFO_TTL_SEC
+    def is_expired(self, max_age: float | None = None) -> bool:
+        limit = INFO_TTL_SEC if max_age is None else max_age
+        return (time.time() - self.fetched_at) > limit
 
 
 def snapshot_from_fields(fields: dict) -> HostInfoSnapshot:
@@ -122,7 +126,7 @@ _DNO_TAG = "DNO|"
 # строка никогда не начинается с 'DNO|').
 _HOST_INFO_SCRIPT = (
     "D=DNO; "
-    "echo \"$D|WHO|$(who 2>/dev/null | head -5 | tr '\\n' '~')\"; "
+    "echo \"$D|WHO|$(who 2>/dev/null | head -20 | tr '\\n' '~')\"; "
     'echo "$D|UPT|$(cat /proc/uptime 2>/dev/null)"; '
     'echo "$D|BOOT|$(uptime -s 2>/dev/null)"; '
     'echo "$D|OS|$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"; '
@@ -142,7 +146,12 @@ _HOST_INFO_SCRIPT = (
     "ls /home/*/.config/systemd/user/*.wants/krfb-dno.service >/dev/null 2>&1 && K=1; "
     "if pgrep -x krfb >/dev/null 2>&1; then V='krfb active'; "
     "elif [ -n \"$K\" ]; then V='krfb inactive'; fi; fi; "
-    'echo "$D|VNC|${V:-none}"'
+    'echo "$D|VNC|${V:-none}"; '
+    # Полные имена (GECOS до первой запятой) всех вошедших: «логин:имя~...»;
+    # нужный логин выбирает разбор (_pick_user_session).
+    "echo \"$D|GECOS|$(for u in $(who 2>/dev/null | awk '{print $1}' | sort -u); do "
+    "printf '%s:%s~' \"$u\" \"$(getent passwd \"$u\" 2>/dev/null | cut -d: -f5 | cut -d, -f1)\"; "
+    'done)"'
 )
 
 
@@ -166,6 +175,26 @@ def _format_uptime(seconds: float) -> str:
     return " ".join(parts)
 
 
+# Удалённый сеанс who: псевдотерминал и адрес в скобках, не номер дисплея
+# («root pts/0 2026-11-11 10:00 (192.168.1.5)»). Сюда же попадает сеанс самого
+# опроса: SSHWorker запрашивает PTY, и sshd пишет его в utmp.
+_REMOTE_SESSION_RE = re.compile(r"^\S+\s+pts/\S+.*\((?!:)[^)]*\)\s*$")
+
+
+def _pick_user_session(sessions: List[str]) -> str:
+    """Сеанс для поля «Текущий пользователь»: первый локальный (графический
+    или консольный); только сеансы по SSH - пусто (за компьютером никого).
+
+    Сеанс самого опроса всегда есть в who (SSHWorker с PTY), поэтому
+    вход по SSH пользователем за компьютером не считается: иначе у хоста
+    без входа показывался бы логин связки опроса (проверено на МОС).
+    """
+    for line in sessions:
+        if not _REMOTE_SESSION_RE.match(line):
+            return line
+    return ""
+
+
 def _parse_host_info_script(output: str) -> HostInfoSnapshot:
     """Разобрать tagged-вывод batch-скрипта.
 
@@ -176,6 +205,7 @@ def _parse_host_info_script(output: str) -> HostInfoSnapshot:
     """
     snap = HostInfoSnapshot(fetched_at=time.time())
     seen = set()
+    gecos: Dict[str, str] = {}
     # Тег обязан быть в НАЧАЛЕ строки — эхо команды (промпт + весь скрипт)
     # не начинается с тега и отсекается этим условием.
     tag_re = re.compile(r"^DNO\|([A-Z]+)\|(.*)")
@@ -199,7 +229,7 @@ def _parse_host_info_script(output: str) -> HostInfoSnapshot:
                 if s.strip() and "who" not in s and "head" not in s
             ]
             if sessions:
-                parts = sessions[0].split()
+                parts = _pick_user_session(sessions).split()
                 if parts:
                     snap.user = parts[0]
                 if len(parts) >= 4:
@@ -232,8 +262,27 @@ def _parse_host_info_script(output: str) -> HostInfoSnapshot:
                     pass
         elif tag == "VNC":
             snap.vnc = _format_vnc(payload)
+        elif tag == "GECOS":
+            gecos = _parse_gecos(payload)
 
+    if snap.user:
+        snap.user_full = gecos.get(snap.user, "")
     return snap
+
+
+# Имя учётной записи Linux: отсекает эхо команды и мусор PTY в записях GECOS.
+_LOGIN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*\$?$")
+
+
+def _parse_gecos(payload: str) -> Dict[str, str]:
+    """«логин:полное имя~...» → {логин: полное имя}; пустые имена пропускаются."""
+    result: Dict[str, str] = {}
+    for entry in (payload or "").split("~"):
+        login, sep, full = entry.partition(":")
+        login, full = login.strip(), full.strip()
+        if sep and full and _LOGIN_RE.match(login) and login not in result:
+            result[login] = full
+    return result
 
 
 # Состояние службы (systemctl is-active) → текст подсказки.
@@ -335,7 +384,13 @@ class HostInfoService(QObject):
 
     # ========== Запрос данных ==========
 
-    def request_info(self, device: DeviceModel) -> None:
+    def request_info(
+        self,
+        device: DeviceModel,
+        *,
+        background: bool = False,
+        max_age: float | None = None,
+    ) -> None:
         """Запросить данные хоста асинхронно (лениво, без блокировки GUI).
 
         Пропускает: дубли (in-flight), свежий кэш (TTL). Офлайн-хосты
@@ -343,6 +398,11 @@ class HostInfoService(QObject):
         (node API уже сделал собственный tcp_ping — force=True).
         Node-хосты удалённых нод маршрутизируются в _request_node_info
         (SSH-опрос невозможен — подсеть ноды недоступна оператору).
+
+        background=True - периодический опрос подписей списка: пакетная
+        задача пула (одна очередь batch_id на все хосты), отказ пишется
+        в журнал на уровне DEBUG. max_age - допустимый возраст кэша вместо
+        INFO_TTL_SEC.
         """
         if device is None:
             return
@@ -352,16 +412,36 @@ class HostInfoService(QObject):
 
         niid = getattr(device, "node_iid", None)
         if niid and niid != _LOCAL_NODE_IID:
-            self._request_node_info(device, niid)
+            self._request_node_info(
+                device, niid, background=background, max_age=max_age
+            )
             return
 
         if not device.is_online:
             return
 
-        self._start_local_fetch(device, source="application")
+        self._start_local_fetch(
+            device, source="application", background=background, max_age=max_age
+        )
+
+    @staticmethod
+    def _task_metadata(host: str, kind: str, background: bool) -> dict:
+        """Метаданные задачи пула: фоновый опрос - пакетный тип с общим batch_id."""
+        if background:
+            return {
+                "host": host,
+                "type": f"{kind}_poll",
+                "batch_id": "host_captions",
+            }
+        return {"host": host, "type": kind}
 
     def _start_local_fetch(
-        self, device: DeviceModel, *, source: str | None = None
+        self,
+        device: DeviceModel,
+        *,
+        source: str | None = None,
+        background: bool = False,
+        max_age: float | None = None,
     ) -> None:
         """Локальный SSH-сбор без гейта is_online (серверный путь: нода уже
         проверила доступность tcp_ping'ом — HostPingTimer у ноды пингует
@@ -369,7 +449,7 @@ class HostInfoService(QObject):
         iid = device_identity(device)
         with self._lock:
             cached = self._cache.get(iid)
-            if cached is not None and not cached.is_expired():
+            if cached is not None and not cached.is_expired(max_age):
                 return
             if iid in self._in_flight:
                 return
@@ -393,8 +473,10 @@ class HostInfoService(QObject):
             self._on_fetched(iid, host, result)
 
         def on_error(task_id, error):
-            self._on_fetch_failed(iid, host, error)
+            self._on_fetch_failed(iid, host, error, background=background)
 
+        metadata = self._task_metadata(host, "host_info", background)
+        metadata["source"] = source
         try:
             pool.submit(
                 self._fetch_sync,
@@ -402,7 +484,7 @@ class HostInfoService(QObject):
                 task_id=f"hostinfo_{host}_{int(time.time() * 1000)}",
                 on_complete=on_complete,
                 on_error=on_error,
-                metadata={"host": host, "type": "host_info", "source": source},
+                metadata=metadata,
             )
             logger.debug(f"HostInfoService: requested info for {host}")
         except Exception as e:
@@ -410,7 +492,14 @@ class HostInfoService(QObject):
             with self._lock:
                 self._in_flight.discard(iid)
 
-    def _request_node_info(self, device: DeviceModel, node_iid: str) -> None:
+    def _request_node_info(
+        self,
+        device: DeviceModel,
+        node_iid: str,
+        *,
+        background: bool = False,
+        max_age: float | None = None,
+    ) -> None:
         """Живые поля node-хоста через ноду-владельца (client.host_info).
 
         Тот же контракт кэша/TTL/dedup, что у локального пути. В on_complete
@@ -425,7 +514,7 @@ class HostInfoService(QObject):
         """
         with self._lock:
             cached = self._cache.get(device_identity(device))
-            if cached is not None and not cached.is_expired():
+            if cached is not None and not cached.is_expired(max_age):
                 return
             if device_identity(device) in self._in_flight:
                 return
@@ -443,7 +532,7 @@ class HostInfoService(QObject):
         if client is None:
             # Нода недоступна/клиент не запущен — INFO-лог (причина «тултип
             # пуст» должна быть видна) + тихий отказ без виджета-обновлений.
-            logger.info(
+            (logger.debug if background else logger.info)(
                 f"HostInfoService: нода {node_iid} недоступна — "
                 f"live-данные {host} не получены"
             )
@@ -457,7 +546,7 @@ class HostInfoService(QObject):
             self._on_node_fetched(iid, host, result)
 
         def on_error(task_id, error):
-            self._on_fetch_failed(iid, host, error)
+            self._on_fetch_failed(iid, host, error, background=background)
 
         try:
             from src.workers.network import get_service_worker_pool
@@ -473,7 +562,7 @@ class HostInfoService(QObject):
                 task_id=f"node_info_{iid}_{int(time.time() * 1000)}",
                 on_complete=on_complete,
                 on_error=on_error,
-                metadata={"host": host, "type": "node_info"},
+                metadata=self._task_metadata(host, "node_info", background),
             )
             logger.debug(f"HostInfoService: node info requested for {host}")
         except Exception as e:
@@ -516,10 +605,16 @@ class HostInfoService(QObject):
                 self._cache[iid] = snap
         self.info_updated.emit(host)
 
-    def _on_fetch_failed(self, iid: DeviceKey, host: str, error: str) -> None:
+    def _on_fetch_failed(
+        self, iid: DeviceKey, host: str, error: str, *, background: bool = False
+    ) -> None:
         with self._lock:
             self._in_flight.discard(iid)
-        logger.info(f"HostInfoService: сбор данных не удался для {host}: {error}")
+        # Фоновый опрос подписей повторяется каждый период: INFO засорял бы
+        # журнал по каждому хосту, где SSH не проходит.
+        (logger.debug if background else logger.info)(
+            f"HostInfoService: сбор данных не удался для {host}: {error}"
+        )
         # Эмитим пустой host — представления перерисуют тултип
         # (уйдёт приписка «данные недоступны» при следующем наведении).
         self.info_updated.emit("")
@@ -572,6 +667,14 @@ class HostInfoService(QObject):
                         live_lines.append(f"{_FIELD_LABELS.get(key, key)}: {val}")
             elif live_keys and self.is_fetching(iid, niid):
                 live_lines.append("Данные запрашиваются…")
+            elif live_keys and not getattr(
+                getattr(config.app, "display", None), "query_info_on_ping", False
+            ):
+                # Наведение сведения не запрашивает: их собирает пинг.
+                live_lines.append(
+                    "Сведения не собираются: включите «Запрашивать сведения "
+                    "при пинге» (Настройки, вкладка «Отображение»)"
+                )
 
         return "\n".join(lines + live_lines)
 

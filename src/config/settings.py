@@ -1522,6 +1522,69 @@ def _custom_panel_icon_size(value) -> int:
     return max(16, min(64, size))
 
 
+# Подписи хостов в списке: ключ и подпись в настройках. Порядок полей в тексте
+# под значком (через дефис) всегда этот, независимо от порядка в settings.json.
+# «Состояние» - цветная точка перед текстом, а не часть текста.
+HOST_CAPTION_FIELDS = (
+    ("status", "Состояние (в сети / не в сети)"),
+    ("name", "Имя"),
+    ("host", "IP-адрес"),
+    ("user", "Вошедший пользователь"),
+)
+DEFAULT_HOST_CAPTIONS = ("name",)
+# Как показывать вошедшего пользователя: имя учётной записи или полное имя
+# (GECOS); без полного имени на хосте показывается учётная запись.
+HOST_CAPTION_USER_MODES = (
+    ("login", "учётная запись"),
+    ("full", "полное имя"),
+)
+DEFAULT_HOST_CAPTION_USER_MODE = "login"
+
+
+def normalize_user_mode(value) -> str:
+    """Режим показа пользователя из списка, иначе по умолчанию."""
+    known = {key for key, _label in HOST_CAPTION_USER_MODES}
+    return value if isinstance(value, str) and value in known else (
+        DEFAULT_HOST_CAPTION_USER_MODE
+    )
+
+
+def normalize_host_captions(value) -> list:
+    """Список полей подписи в каноническом порядке без повторов и чужих ключей.
+
+    Не список (повреждённый файл) - значение по умолчанию; пустой список
+    допустим: подписи выключены, под значком ничего нет.
+    """
+    if not isinstance(value, (list, tuple)):
+        return list(DEFAULT_HOST_CAPTIONS)
+    chosen = {item for item in value if isinstance(item, str)}
+    return [key for key, _label in HOST_CAPTION_FIELDS if key in chosen]
+
+
+@dataclass
+class DisplayConfig:
+    """Отображение списка хостов (settings.json, ключ ``display``)."""
+
+    host_captions: list = field(default_factory=lambda: list(DEFAULT_HOST_CAPTIONS))
+    # Каждый пинг «в сети» запускает сбор сведений хоста по SSH (пользователь
+    # для подписи и подсказки). Выключено: только пинги, сведения по наведению.
+    query_info_on_ping: bool = False
+    user_mode: str = DEFAULT_HOST_CAPTION_USER_MODE
+
+
+def load_display_config(data) -> DisplayConfig:
+    """Прочитать раздел ``display``; битые значения заменяются умолчаниями."""
+    if not isinstance(data, dict):
+        return DisplayConfig()
+    return DisplayConfig(
+        host_captions=normalize_host_captions(
+            data.get("host_captions", list(DEFAULT_HOST_CAPTIONS))
+        ),
+        query_info_on_ping=data.get("query_info_on_ping") is True,
+        user_mode=normalize_user_mode(data.get("user_mode")),
+    )
+
+
 @dataclass
 class AppConfig:
     """Корневая конфигурация приложения."""
@@ -1536,6 +1599,7 @@ class AppConfig:
     credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
     nodes: NodesConfig = field(default_factory=NodesConfig)
     custom_toolbar: CustomToolbarConfig = field(default_factory=CustomToolbarConfig)
+    display: DisplayConfig = field(default_factory=DisplayConfig)
     expand: bool = False
     kaomoji_enabled: bool = True
     theme: str = "github-dark"  # id темы оформления (assets/themes), system = нативная
@@ -1675,6 +1739,8 @@ class Config:
                         self.app.expand = bool(data["expand"])
                     if "kaomoji_enabled" in data:
                         self.app.kaomoji_enabled = bool(data["kaomoji_enabled"])
+                    if "display" in data:
+                        self.app.display = load_display_config(data["display"])
                     if "theme" in data and isinstance(data["theme"], str):
                         self.app.theme = data["theme"] or "github-dark"
                     if "icon_theme" in data and isinstance(data["icon_theme"], str):
@@ -1923,6 +1989,13 @@ class Config:
                 "camera": asdict(self.app.camera),
                 "expand": self.app.expand,
                 "kaomoji_enabled": self.app.kaomoji_enabled,
+                "display": {
+                    "host_captions": normalize_host_captions(
+                        self.app.display.host_captions
+                    ),
+                    "query_info_on_ping": bool(self.app.display.query_info_on_ping),
+                    "user_mode": normalize_user_mode(self.app.display.user_mode),
+                },
                 "theme": self.app.theme,
                 "icon_theme": self.app.icon_theme,
             }
