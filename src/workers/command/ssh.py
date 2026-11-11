@@ -302,7 +302,7 @@ class SSHWorker(BaseCommandExecutor):
         # Весь скрипт получает одинаковые права, включая пайпы и перенаправления.
         from .executor_base import get_credentials as _get_creds
 
-        _creds = _get_creds(device)
+        _creds = _get_creds(device, use_key=False)
         _original_text = command_text
         if self.desktop_context is None:
             command_text = ensure_sudo_prefix(command_text, device, _creds.username)

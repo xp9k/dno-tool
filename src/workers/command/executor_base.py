@@ -3,6 +3,7 @@
 Предоставляет CredentialsResult dataclass, get_credentials() и BaseCommandExecutor
 с общим интерфейсом для SSH/SFTP/local команд."""
 
+import hashlib
 import os
 import threading
 from abc import ABC, abstractmethod
@@ -39,12 +40,30 @@ def _detect_key_type(privkey_path: str) -> Optional[str]:
     return None
 
 
+# Загруженные ключи: (путь, хэш пароля) -> (признаки файла, PKey | None | текст отказа).
+# Разбор RSA-ключа с проверкой занимает десятки миллисекунд под GIL, а ключ
+# нужен каждому SSH-подключению: без кэша запуск задачи на сотне хостов
+# занимал GIL на секунды, и интерфейс замирал.
+_KEY_CACHE: dict[tuple[str, bytes], tuple[tuple[int, int, int], object]] = {}
+_KEY_CACHE_LOCK = threading.Lock()
+
+
+class _PasswordRequired(NamedTuple):
+    """Кэшированный исход «ключ защищён паролем»."""
+
+    message: str
+
+
 def load_private_key(key_path: str, password: str = "") -> Optional[paramiko.PKey]:
-    """Загружает закрытый SSH-ключ, автоматически определяя тип (Ed25519, RSA, ECDSA, DSA).
+    """Загружает закрытый SSH-ключ, автоматически определяя тип (Ed25519, RSA, ECDSA).
+
+    Результат кэшируется до изменения файла (время изменения, размер, inode):
+    одновременные подключения ждут одну загрузку, а не разбирают ключ каждое.
+    Объект PKey общий для потоков, подпись через ключ cryptography безопасна.
 
     Args:
         key_path: Путь к файлу закрытого ключа.
-        password: Пароль от ключа (пустая строка — без пароля).
+        password: Пароль от ключа (пустая строка - без пароля).
 
     Returns:
         Объект PKey или None, если ключ не удалось загрузить.
@@ -52,6 +71,34 @@ def load_private_key(key_path: str, password: str = "") -> Optional[paramiko.PKe
     Raises:
         paramiko.PasswordRequiredException: если ключ защищён паролем.
     """
+    try:
+        info = os.stat(key_path)
+    except OSError:
+        return _load_private_key_uncached(key_path, password)
+    stamp = (info.st_mtime_ns, info.st_size, info.st_ino)
+    cache_key = (
+        os.path.abspath(key_path),
+        hashlib.sha256((password or "").encode("utf-8")).digest(),
+    )
+    with _KEY_CACHE_LOCK:
+        cached = _KEY_CACHE.get(cache_key)
+        if cached is None or cached[0] != stamp:
+            try:
+                result: object = _load_private_key_uncached(key_path, password)
+            except paramiko.PasswordRequiredException as error:
+                result = _PasswordRequired(str(error))
+            _KEY_CACHE[cache_key] = (stamp, result)
+        else:
+            result = cached[1]
+    if isinstance(result, _PasswordRequired):
+        raise paramiko.PasswordRequiredException(result.message)
+    return result  # type: ignore[return-value]
+
+
+def _load_private_key_uncached(
+    key_path: str, password: str = ""
+) -> Optional[paramiko.PKey]:
+    """Разобрать файл ключа без кэша, перебирая поддерживаемые типы."""
     for key_class in _KEY_CLASSES:
         try:
             return key_class.from_private_key_file(key_path, password)

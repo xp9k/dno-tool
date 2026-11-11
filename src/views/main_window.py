@@ -3782,7 +3782,14 @@ class MainWindow(QWidget):
             default_timeout=config.app.ssh.command_timeout,
             parent=self,
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+            command = dialog.command()
+        finally:
+            # Окно - потомок главного: без удаления каждое открытие оставляло бы
+            # живой диалог с редактором. Ввод уже сохранён в store.draft.
+            dialog.deleteLater()
+        if not accepted:
             return
         # Повторная проверка: состояние могло измениться, пока окно было открыто.
         if self._command_running():
@@ -3793,7 +3800,7 @@ class MainWindow(QWidget):
                 "запустите её после завершения.",
             )
             return
-        self.execute_command(devices, dialog.command().build_task())
+        self.execute_command(devices, command.build_task())
 
     def on_command_info_clicked(self):
         """Handle command info button click"""

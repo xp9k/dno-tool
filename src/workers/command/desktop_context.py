@@ -214,7 +214,7 @@ class DesktopContext:
         self, channel: paramiko.Channel, command: str, device: DeviceModel
     ) -> tuple[str, str | None]:
         """Запустить служебный канал, разрешая sudo только по настройкам хоста."""
-        creds = get_credentials(device)
+        creds = get_credentials(device, use_key=False)
         prompt = ""
         if should_use_sudo(device) and creds.username != "root":
             prompt = "__DNO_DESKTOP_SUDO_" + uuid.uuid4().hex + ":"

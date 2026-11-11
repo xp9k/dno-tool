@@ -485,7 +485,7 @@ class InstallGStreamerThread(RecordingSSHThread):
                     packages.append(found.strip().splitlines()[0])
         command = "dnf install -y " + " ".join(shlex.quote(p) for p in packages)
         sudo = should_use_sudo(self.device)
-        password = get_credentials(self.device).password if sudo else None
+        password = get_credentials(self.device, use_key=False).password if sudo else None
         out, err, code = self.execute(
             wrap_sudo_cmd(command, sudo),
             (password + "\n") if password is not None else "",
