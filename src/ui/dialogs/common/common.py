@@ -633,49 +633,76 @@ class ConfigDialog(QDialog):
     def _setup_display_tab(self) -> None:
         """Вкладка «Отображение»: что подписывать под значками хостов и вид окна."""
         from src.config.settings import (
-            HOST_CAPTION_FIELDS,
+            HOST_CAPTION_TEXT_FIELDS,
             HOST_CAPTION_USER_MODES,
+            normalize_caption_order,
             normalize_host_captions,
             normalize_user_mode,
         )
+        from src.ui.widgets.ordered_check_list import OrderedCheckList
 
         page = QWidget()
         outer = QVBoxLayout(page)
 
-        captions_group = QGroupBox("Подписи хостов в списке")
-        captions_layout = QVBoxLayout(captions_group)
         display = getattr(config.app, "display", None)
 
-        # Главная галочка: без неё только пинги и подпись по умолчанию
-        # (имя), поля подписи от неё зависят.
+        # Главная галочка: весь сбор сведений по SSH при пинге. От неё
+        # зависят «Информация о хосте» и поля подписи из сведений.
         self.query_info_on_ping = QCheckBox("Запрашивать сведения при пинге")
         self.query_info_on_ping.setChecked(
             bool(getattr(display, "query_info_on_ping", False))
         )
         self.query_info_on_ping.setToolTip(
             "Каждый пинг, на который хост ответил, запускает сбор сведений\n"
-            "по SSH (вошедший пользователь, время работы и т. п.).\n"
-            "Сведения обновляются с интервалом пинга, но на каждый пинг\n"
-            "добавляется SSH-подключение, и пользователь появляется позже\n"
-            "точки состояния.\n\n"
+            "по SSH: вошедший пользователь, имя компьютера, время работы,\n"
+            "память и т. п. Сведения обновляются с интервалом пинга.\n"
             "Без галочки выполняются только пинги."
         )
-        captions_layout.addWidget(self.query_info_on_ping)
+        outer.addWidget(self.query_info_on_ping)
+        # Группы, зависящие от сбора, - с отступом под главной галочкой.
+        dependents = QVBoxLayout()
+        dependents.setContentsMargins(22, 0, 0, 0)
+        outer.addLayout(dependents)
+
+        tooltip_group = QGroupBox("Подсказка хоста")
+        tooltip_layout = QVBoxLayout(tooltip_group)
+        self.tooltip_info_on_ping = QCheckBox("Информация о хосте")
+        self.tooltip_info_on_ping.setChecked(
+            bool(getattr(display, "tooltip_info_on_ping", False))
+        )
+        self.tooltip_info_on_ping.setToolTip(
+            "Показывать собранные сведения в подсказке при наведении.\n"
+            "Что показывать, выбирается кнопкой «Информация в тултипе хоста»\n"
+            "на панели вида. Нужен запрос сведений при пинге."
+        )
+        tooltip_layout.addWidget(self.tooltip_info_on_ping)
+        dependents.addWidget(tooltip_group)
+
+        captions_group = QGroupBox("Подписи хостов в списке")
+        captions_layout = QVBoxLayout(captions_group)
 
         current = set(
             normalize_host_captions(getattr(display, "host_captions", ["name"]))
         )
-        self.caption_checks: Dict[str, QCheckBox] = {}
-        tooltips = {
-            "status": "Цветная точка перед текстом подписи:\n"
-            "зелёная - хост в сети, серая - не в сети.",
-            "name": "Имя хоста из списка.",
-            "host": "Адрес хоста (IP или имя в сети).",
-            "user": "Пользователь, вошедший в систему на компьютере\n"
-            "(локальный или графический сеанс, не вход по SSH).",
-        }
         fields_layout = QVBoxLayout()
-        fields_layout.setContentsMargins(20, 0, 0, 0)
+
+        labels = dict(HOST_CAPTION_TEXT_FIELDS)
+        order = normalize_caption_order(getattr(display, "host_caption_order", None))
+        self.caption_list = OrderedCheckList()
+        self.caption_list.set_rows(
+            [(key, labels[key], key in current) for key in order],
+            tooltips={
+                "name": "Имя хоста из списка.",
+                "host": "Адрес хоста (IP или имя в сети).",
+                "hostname": "Имя компьютера на самом хосте (hostname).\n"
+                "Нужен запрос сведений при пинге.",
+                "user": "Пользователь, вошедший в систему на компьютере\n"
+                "(локальный или графический сеанс, не вход по SSH).\n"
+                "Нужен запрос сведений при пинге.",
+            },
+        )
+        fields_layout.addWidget(self.caption_list)
+
         self.user_mode_combo = QComboBox()
         for mode, mode_label in HOST_CAPTION_USER_MODES:
             self.user_mode_combo.addItem(mode_label, mode)
@@ -685,28 +712,18 @@ class ConfigDialog(QDialog):
         self.user_mode_combo.setCurrentIndex(max(0, mode_index))
         self.user_mode_combo.setToolTip(
             "Учётная запись - логин (teacher).\n"
-            "Полное имя - из сведений учётной записи на хосте (GECOS);\n"
-            "если оно не задано, показывается логин."
+            "Полное имя - из сведений учётной записи на хосте (GECOS).\n"
+            "Оба - «teacher (Иванова М. П.)».\n"
+            "Если полное имя не задано, показывается логин."
         )
-        for key, label in HOST_CAPTION_FIELDS:
-            check = QCheckBox(label)
-            check.setChecked(key in current)
-            check.setToolTip(tooltips.get(key, ""))
-            self.caption_checks[key] = check
-            if key == "user":
-                row = QHBoxLayout()
-                row.addWidget(check)
-                row.addWidget(self.user_mode_combo)
-                row.addStretch(1)
-                fields_layout.addLayout(row)
-            else:
-                fields_layout.addWidget(check)
+        # В строке «Вошедший пользователь», сразу после подписи.
+        self.caption_list.set_row_widget("user", self.user_mode_combo)
         captions_layout.addLayout(fields_layout)
-        self.caption_checks["user"].toggled.connect(self._sync_query_dependents)
 
+        self.caption_list.itemChanged.connect(self._sync_query_dependents)
         self.query_info_on_ping.toggled.connect(self._sync_query_dependents)
         self._sync_query_dependents()
-        outer.addWidget(captions_group)
+        dependents.addWidget(captions_group)
 
         view_form = QFormLayout()
         self.expand_trees = QCheckBox()
@@ -724,20 +741,24 @@ class ConfigDialog(QDialog):
         self.tabs.addTab(page, "Отображение")
 
     def _sync_query_dependents(self, *_args) -> None:
-        """Поля подписи активны только с запросом сведений при пинге.
+        """От запроса сведений при пинге зависят «Информация о хосте» и поля
+        подписи из сведений (пользователь, имя компьютера); отметки сохраняются."""
+        from src.config.settings import HOST_CAPTION_COLLECTED
 
-        Отметки сохраняются: при включённом запросе они вернутся.
-        """
         enabled = self.query_info_on_ping.isChecked()
-        for check in self.caption_checks.values():
-            check.setEnabled(enabled)
-        self.user_mode_combo.setEnabled(
-            enabled and self.caption_checks["user"].isChecked()
-        )
+        self.tooltip_info_on_ping.setEnabled(enabled)
+        blocked = self.caption_list.blockSignals(True)
+        try:
+            for key in HOST_CAPTION_COLLECTED:
+                self.caption_list.set_checkable(key, enabled)
+        finally:
+            self.caption_list.blockSignals(blocked)
+        user_mode = enabled and self.caption_list.is_checked("user")
+        self.user_mode_combo.setEnabled(user_mode)
 
     def selected_caption_fields(self) -> List[str]:
-        """Отмеченные поля подписи в каноническом порядке."""
-        return [key for key, check in self.caption_checks.items() if check.isChecked()]
+        """Отмеченные поля подписи по порядку."""
+        return self.caption_list.checked()
 
     def _on_theme_changed(self, index: int) -> None:
         """Live-применение темы при выборе в комбобоксе (без сохранения).
@@ -909,12 +930,18 @@ class ConfigDialog(QDialog):
 
         config.app.expand = self.expand_trees.isChecked()
         config.app.kaomoji_enabled = self.kaomoji_enabled.isChecked()
-        from src.config.settings import normalize_host_captions
+        from src.config.settings import normalize_caption_order, normalize_host_captions
 
         config.app.display.host_captions = normalize_host_captions(
             self.selected_caption_fields()
         )
+        config.app.display.host_caption_order = normalize_caption_order(
+            self.caption_list.order()
+        )
         config.app.display.query_info_on_ping = self.query_info_on_ping.isChecked()
+        config.app.display.tooltip_info_on_ping = (
+            self.tooltip_info_on_ping.isChecked()
+        )
         config.app.display.user_mode = self.user_mode_combo.currentData() or "login"
         from src.ui.theme_manager import FALLBACK_THEME_ID as _FALLBACK_THEME_ID
 

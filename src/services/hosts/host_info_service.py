@@ -1,8 +1,10 @@
 """Host Info Service — фоновый сбор данных хоста для живых тултипов.
 
-Сбор запускает пинг хоста «в сети» при галочке «Запрашивать сведения при
-пинге» (DeviceListView); наведение мыши только показывает кэш. Сервис
-выполняет одну короткую SSH-команду (batch-скрипт) и кэширует результат. Тултип собирается из
+Сбор запускает каждый пинг хоста «в сети» при настройке «Запрашивать
+сведения при пинге» (DeviceListView); наведение мыши только показывает
+кэш. Живые поля в подсказке - при «Информации о хосте», состав
+выбирается кнопкой тулбара. Сервис выполняет одну
+короткую SSH-команду (batch-скрипт) и кэширует результат с TTL. Тултип собирается из
 кэша + статических полей устройства (Имя/Хост/Порт/Нода — выбор в меню
 тулбара ViewToolbar). Офлайн-хосты не опрашиваются.
 
@@ -50,6 +52,7 @@ STATIC_TOOLTIP_FIELDS = [
 TOOLTIP_FIELDS = [
     ("user", "Текущий пользователь"),
     ("user_full", "Полное имя пользователя"),
+    ("hostname", "Имя компьютера"),
     ("login_time", "Время входа"),
     ("uptime", "Время работы системы"),
     ("boot_time", "Время загрузки"),
@@ -78,6 +81,7 @@ class HostInfoSnapshot:
 
     user: str = ""
     user_full: str = ""  # GECOS (поле 5 passwd до запятой) для user
+    hostname: str = ""  # вывод hostname на хосте (может отличаться от имени в списке)
     login_time: str = ""
     uptime: str = ""
     boot_time: str = ""
@@ -130,6 +134,7 @@ _HOST_INFO_SCRIPT = (
     'echo "$D|UPT|$(cat /proc/uptime 2>/dev/null)"; '
     'echo "$D|BOOT|$(uptime -s 2>/dev/null)"; '
     'echo "$D|OS|$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"; '
+    'echo "$D|HOSTNAME|$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null)"; '
     'echo "$D|LOAD|$(cat /proc/loadavg 2>/dev/null)"; '
     "echo \"$D|MEM|$(free -m 2>/dev/null | awk '/^Mem:/{print $2, $3}')\"; "
     # VNC-сервер: тот же порядок, что у KRFBService._host_server — включённая
@@ -246,6 +251,11 @@ def _parse_host_info_script(output: str) -> HostInfoSnapshot:
             snap.boot_time = _format_boot_time(payload)
         elif tag == "OS":
             snap.os = payload.strip().strip('"')
+        elif tag == "HOSTNAME":
+            name = payload.strip()
+            # Имя узла без пробелов; эхо и мусор PTY отбрасываются.
+            if name and " " not in name and len(name) <= 253:
+                snap.hostname = name
         elif tag == "LOAD":
             load_parts = payload.split()
             if len(load_parts) >= 3:
@@ -657,7 +667,10 @@ class HostInfoService(QObject):
         # для локальных хостов (пинг): у нод-хостов, не отмеченных галочкой,
         # is_online всегда False, но данные доступны через ноду.
         live_lines = []
-        if device.is_online or is_remote_node:
+        from src.config.settings import host_tooltip_info_enabled
+
+        show_live = host_tooltip_info_enabled(getattr(config.app, "display", None))
+        if show_live and (device.is_online or is_remote_node):
             live_keys = [f for f in self._enabled_fields if f not in _STATIC_KEYS]
             snap = self.get_info(iid, niid)
             if snap is not None:
@@ -667,14 +680,6 @@ class HostInfoService(QObject):
                         live_lines.append(f"{_FIELD_LABELS.get(key, key)}: {val}")
             elif live_keys and self.is_fetching(iid, niid):
                 live_lines.append("Данные запрашиваются…")
-            elif live_keys and not getattr(
-                getattr(config.app, "display", None), "query_info_on_ping", False
-            ):
-                # Наведение сведения не запрашивает: их собирает пинг.
-                live_lines.append(
-                    "Сведения не собираются: включите «Запрашивать сведения "
-                    "при пинге» (Настройки, вкладка «Отображение»)"
-                )
 
         return "\n".join(lines + live_lines)
 

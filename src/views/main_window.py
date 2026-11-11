@@ -600,8 +600,20 @@ class MainWindow(QWidget):
                 self._apply_kaomoji_visibility()
                 if hasattr(self, "listview"):
                     self.listview.apply_caption_settings()
+                self._apply_host_info_setting()
         except Exception as e:
             logger.error(f"MainWindow: _on_data_saved handler error: {e}")
+
+    def _apply_host_info_setting(self) -> None:
+        """Кнопка состава подсказки активна при сборе сведений и «Информации о хосте»."""
+        toolbar = getattr(self, "list_toolbar", None)
+        if toolbar is None or not hasattr(toolbar, "set_host_info_enabled"):
+            return
+        from src.config.settings import host_tooltip_info_enabled
+
+        toolbar.set_host_info_enabled(
+            host_tooltip_info_enabled(getattr(config.app, "display", None))
+        )
 
     def _apply_kaomoji_visibility(self) -> None:
         """Применить опцию каомодзи к статус-строке немедленно.
@@ -2581,6 +2593,7 @@ class MainWindow(QWidget):
         # ViewToolbar — фильтр онлайн, миниатюры, размер (импортирован как
         # DeviceListToolbar для обратной совместимости; это ViewToolbar).
         self.list_toolbar = ViewToolbar()
+        self._apply_host_info_setting()
         self.veyon_toolbar = VeyonToolbar()
         self.control_toolbar = ControlToolbar()
 

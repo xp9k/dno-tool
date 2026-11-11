@@ -1522,21 +1522,27 @@ def _custom_panel_icon_size(value) -> int:
     return max(16, min(64, size))
 
 
-# Подписи хостов в списке: ключ и подпись в настройках. Порядок полей в тексте
-# под значком (через дефис) всегда этот, независимо от порядка в settings.json.
-# «Состояние» - цветная точка перед текстом, а не часть текста.
-HOST_CAPTION_FIELDS = (
-    ("status", "Состояние (в сети / не в сети)"),
+# Подписи хостов в списке: ключ и подпись в настройках. Поля идут через дефис
+# в порядке ``host_caption_order`` (перетаскивание в настройках).
+HOST_CAPTION_TEXT_FIELDS = (
     ("name", "Имя"),
     ("host", "IP-адрес"),
+    ("hostname", "Имя компьютера (hostname)"),
     ("user", "Вошедший пользователь"),
 )
+HOST_CAPTION_FIELDS = HOST_CAPTION_TEXT_FIELDS
+# Поля из сведений хоста (SSH): показываются только с галочкой «Запрашивать
+# сведения при пинге». Имя и IP есть в списке хостов.
+HOST_CAPTION_COLLECTED = frozenset({"hostname", "user"})
 DEFAULT_HOST_CAPTIONS = ("name",)
-# Как показывать вошедшего пользователя: имя учётной записи или полное имя
-# (GECOS); без полного имени на хосте показывается учётная запись.
+DEFAULT_HOST_CAPTION_ORDER = tuple(key for key, _label in HOST_CAPTION_TEXT_FIELDS)
+# Как показывать вошедшего пользователя: имя учётной записи, полное имя
+# (GECOS) или оба («teacher (Иванова М. П.)»); без полного имени на хосте
+# показывается учётная запись.
 HOST_CAPTION_USER_MODES = (
     ("login", "учётная запись"),
     ("full", "полное имя"),
+    ("both", "оба"),
 )
 DEFAULT_HOST_CAPTION_USER_MODE = "login"
 
@@ -1550,15 +1556,49 @@ def normalize_user_mode(value) -> str:
 
 
 def normalize_host_captions(value) -> list:
-    """Список полей подписи в каноническом порядке без повторов и чужих ключей.
+    """Включённые поля подписи: известные ключи без повторов, порядок сохраняется.
 
     Не список (повреждённый файл) - значение по умолчанию; пустой список
     допустим: подписи выключены, под значком ничего нет.
     """
     if not isinstance(value, (list, tuple)):
         return list(DEFAULT_HOST_CAPTIONS)
-    chosen = {item for item in value if isinstance(item, str)}
-    return [key for key, _label in HOST_CAPTION_FIELDS if key in chosen]
+    known = {key for key, _label in HOST_CAPTION_FIELDS}
+    result = []
+    for item in value:
+        if isinstance(item, str) and item in known and item not in result:
+            result.append(item)
+    return result
+
+
+def normalize_caption_order(value) -> list:
+    """Полный порядок текстовых полей: заданные ключи, затем недостающие
+    в порядке по умолчанию (новое поле встаёт в конец)."""
+    order = []
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if item in DEFAULT_HOST_CAPTION_ORDER and item not in order:
+                order.append(item)
+    order.extend(key for key in DEFAULT_HOST_CAPTION_ORDER if key not in order)
+    return order
+
+
+def caption_fields_in_order(enabled, order, collected: bool = True) -> list:
+    """Поля подписи для отрисовки: включённые поля в заданном порядке; без
+    сбора сведений поля ``HOST_CAPTION_COLLECTED`` пропускаются."""
+    chosen = set(normalize_host_captions(enabled))
+    fields = []
+    for key in normalize_caption_order(order):
+        if key in chosen and (collected or key not in HOST_CAPTION_COLLECTED):
+            fields.append(key)
+    return fields
+
+
+def host_tooltip_info_enabled(display) -> bool:
+    """Живые сведения в подсказке: сбор при пинге и «Информация о хосте»."""
+    return bool(getattr(display, "query_info_on_ping", False)) and bool(
+        getattr(display, "tooltip_info_on_ping", False)
+    )
 
 
 @dataclass
@@ -1566,9 +1606,15 @@ class DisplayConfig:
     """Отображение списка хостов (settings.json, ключ ``display``)."""
 
     host_captions: list = field(default_factory=lambda: list(DEFAULT_HOST_CAPTIONS))
-    # Каждый пинг «в сети» запускает сбор сведений хоста по SSH (пользователь
-    # для подписи и подсказки). Выключено: только пинги, сведения по наведению.
+    host_caption_order: list = field(
+        default_factory=lambda: list(DEFAULT_HOST_CAPTION_ORDER)
+    )
+    # «Запрашивать сведения при пинге»: весь сбор сведений по SSH (каждый пинг
+    # «в сети»). От неё зависят подсказка и поля подписи из сведений.
     query_info_on_ping: bool = False
+    # «Информация о хосте»: живые сведения в подсказке (состав - кнопкой
+    # тулбара). Действует только вместе с query_info_on_ping.
+    tooltip_info_on_ping: bool = False
     user_mode: str = DEFAULT_HOST_CAPTION_USER_MODE
 
 
@@ -1580,7 +1626,9 @@ def load_display_config(data) -> DisplayConfig:
         host_captions=normalize_host_captions(
             data.get("host_captions", list(DEFAULT_HOST_CAPTIONS))
         ),
+        host_caption_order=normalize_caption_order(data.get("host_caption_order")),
         query_info_on_ping=data.get("query_info_on_ping") is True,
+        tooltip_info_on_ping=data.get("tooltip_info_on_ping") is True,
         user_mode=normalize_user_mode(data.get("user_mode")),
     )
 
@@ -1993,7 +2041,13 @@ class Config:
                     "host_captions": normalize_host_captions(
                         self.app.display.host_captions
                     ),
+                    "host_caption_order": normalize_caption_order(
+                        self.app.display.host_caption_order
+                    ),
                     "query_info_on_ping": bool(self.app.display.query_info_on_ping),
+                    "tooltip_info_on_ping": bool(
+                        self.app.display.tooltip_info_on_ping
+                    ),
                     "user_mode": normalize_user_mode(self.app.display.user_mode),
                 },
                 "theme": self.app.theme,

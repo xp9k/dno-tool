@@ -800,9 +800,9 @@ class DynamicHeightListView(QListView):
         """Перехват ToolTip: тултип из кэша HostInfoService.
 
         Наведение сведения не запрашивает (решение пользователя): их собирает
-        пинг при галочке «Запрашивать сведения при пинге»
-        (DeviceListView._caption_on_online). Если ответ придёт, пока курсор
-        на хосте, тултип перерисуется (_on_host_info_updated).
+        пинг при «Запрашивать сведения при пинге» (_caption_on_online),
+        состав подсказки выбирается кнопкой тулбара. Если ответ придёт, пока
+        курсор на хосте, тултип перерисуется (_on_host_info_updated).
         """
         if ev.type() == QEvent.Type.ToolTip:
             try:
@@ -864,7 +864,7 @@ class DeviceListView(QWidget):
         )  # подмножество _collapsed, скрытое фильтром «только онлайн»
         # Поля подписи под значком (вкладка «Отображение» настроек).
         self._caption_fields: tuple[str, ...] = self._configured_caption_fields()
-        self._caption_full_name: bool = self._configured_full_name()
+        self._caption_user_mode: str = self._configured_user_mode()
         # Запрос сведений при пинге (галочка на вкладке «Отображение»).
         self._query_info_on_ping: bool = self._configured_query_on_ping()
         # Ответы пинга и сведений приходят по одному: перерисовка схлопывается.
@@ -911,26 +911,35 @@ class DeviceListView(QWidget):
     # --------- подписи хостов ----------
     @staticmethod
     def _configured_caption_fields() -> tuple[str, ...]:
-        from src.config.settings import DEFAULT_HOST_CAPTIONS, normalize_host_captions
+        from src.config.settings import caption_fields_in_order
 
         display = getattr(config.app, "display", None)
-        # Поля подписи зависят от галочки «Запрашивать сведения при пинге»:
-        # без неё только пинги и подпись по умолчанию (имя).
-        if not bool(getattr(display, "query_info_on_ping", False)):
-            return tuple(DEFAULT_HOST_CAPTIONS)
+        # Поля из сведений хоста (пользователь, имя компьютера) - только
+        # с галочкой «Запрашивать сведения при пинге»; остальные всегда.
         return tuple(
-            normalize_host_captions(getattr(display, "host_captions", ["name"]))
+            caption_fields_in_order(
+                getattr(display, "host_captions", ["name"]),
+                getattr(display, "host_caption_order", None),
+                bool(getattr(display, "query_info_on_ping", False)),
+            )
         )
 
     @staticmethod
-    def _configured_full_name() -> bool:
+    def _configured_user_mode() -> str:
+        from src.config.settings import normalize_user_mode
+
         display = getattr(config.app, "display", None)
-        return getattr(display, "user_mode", "login") == "full"
+        return normalize_user_mode(getattr(display, "user_mode", "login"))
 
     @staticmethod
     def _configured_query_on_ping() -> bool:
+        """«Запрашивать сведения при пинге»: весь сбор (подсказка и подписи)."""
         display = getattr(config.app, "display", None)
         return bool(getattr(display, "query_info_on_ping", False))
+
+    def _has_collected_fields(self) -> bool:
+        """В подписи есть поля из сведений хоста (пользователь, hostname)."""
+        return "user" in self._caption_fields or "hostname" in self._caption_fields
 
     def caption_fields(self) -> tuple[str, ...]:
         """Текущие поля подписи хостов."""
@@ -941,13 +950,13 @@ class DeviceListView(QWidget):
         fields = self._configured_caption_fields()
         changed = fields != self._caption_fields
         self._caption_fields = fields
-        full_name = self._configured_full_name()
-        if full_name != self._caption_full_name:
-            self._caption_full_name = full_name
+        user_mode = self._configured_user_mode()
+        if user_mode != self._caption_user_mode:
+            self._caption_user_mode = user_mode
             for info in self._categories.values():
                 delegate = find_caption_delegate(info["view"])
                 if delegate is not None:
-                    delegate.set_full_name(full_name)
+                    delegate.set_user_mode(user_mode)
         if changed:
             for info in self._categories.values():
                 view = info["view"]
@@ -1008,27 +1017,26 @@ class DeviceListView(QWidget):
     def _caption_on_online(self, device: DeviceModel, is_online: bool) -> None:
         """Результат пинга: запрос сведений и перерисовка подписи.
 
-        С галочкой «Запрашивать сведения при пинге» каждый пинг «в сети»
-        запускает сбор сведений (SSH в служебном пуле, не в потоке проверки
-        доступности: тот один на все хосты и ждать SSH не должен). Без
-        галочки только пинги, сведения не собираются (наведение их тоже
-        не запрашивает).
+        С «Запрашивать сведения при пинге» каждый пинг «в сети» запускает
+        сбор сведений для подсказки и подписей (SSH в служебном пуле, не в
+        потоке проверки доступности: тот один на все хосты и ждать SSH не
+        должен). Без неё сведения не собираются (наведение их тоже не
+        запрашивает).
         """
-        fields = self._caption_fields
         query = self._query_info_on_ping
         if is_online and query:
             self._request_info(device)
-        elif not is_online and (query or "user" in fields):
+        elif not is_online and (query or self._has_collected_fields()):
             # Выключенный компьютер: прежний пользователь больше не верен.
             get_host_info_service().invalidate(
                 getattr(device, "iid", None) or "", getattr(device, "node_iid", None)
             )
-        if "status" in fields or "user" in fields:
+        if self._has_collected_fields():
             self._schedule_caption_repaint()
 
     def _on_host_info_updated(self, host: str):
         """Данные хоста пришли — перерисовать тултип, если курсор на этом хосте."""
-        if "user" in self._caption_fields:
+        if self._has_collected_fields():
             self._schedule_caption_repaint()
         if not host:
             return
@@ -1354,9 +1362,8 @@ class DeviceListView(QWidget):
         view.setWordWrap(True)
         # Плитку рисует делегат подписей (значок + строки из настроек).
         view.setItemDelegate(
-            HostCaptionDelegate(view, self._caption_fields, self._caption_full_name)
+            HostCaptionDelegate(view, self._caption_fields, self._caption_user_mode)
         )
-        view.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         # model
         model = QStandardItemModel()

@@ -328,6 +328,7 @@ class ViewToolbar(BaseDeviceToolbar):
                 self._info_menu.addSeparator()  # граница статика/живые
         self._info_button.setMenu(self._info_menu)
         self.addWidget(self._info_button)
+        self.set_host_info_enabled(False)
 
         self.addSeparator()
 
@@ -393,6 +394,26 @@ class ViewToolbar(BaseDeviceToolbar):
 
     def _emit_size(self):
         self.icon_size_changed.emit(self._slider.value())
+
+    def set_host_info_enabled(self, enabled: bool) -> None:
+        """Кнопка состава подсказки активна только при сборе сведений.
+
+        Сведения собирает пинг при «Запрашивать сведения при пинге», в подсказке
+        они показываются при «Информации о хосте»; без них выбирать поля не из
+        чего, подсказка объясняет, где включить
+        (у неактивной кнопки подсказка Qt тоже показывается).
+        """
+        self._info_button.setEnabled(bool(enabled))
+        self._info_button.setToolTip(
+            "Информация в тултипе хоста"
+            if enabled
+            else "Информация в тултипе хоста недоступна: включите\n"
+            "«Запрашивать сведения при пинге» и «Информация о хосте»\n"
+            "в настройках (вкладка «Отображение»)"
+        )
+
+    def is_host_info_enabled(self) -> bool:
+        return self._info_button.isEnabled()
 
     def _emit_tooltip_fields(self):
         """Меню тултипа: отправить список включённых полей (в порядке TOOLTIP_MENU_FIELDS)."""
