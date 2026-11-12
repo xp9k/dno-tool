@@ -1287,7 +1287,12 @@ class BashViewerDialog(QDialog):
         self.setMinimumSize(700, 440)
         self.resize(960, 640)
         layout = QVBoxLayout(self)
-        self.script_editor = ScriptEditor(self, read_only=True, show_menu=False)
+        self.script_editor = ScriptEditor(self, read_only=True)
+        # Только меню просмотра и навигации: «Поиск» и «Вид». Сочетания клавиш
+        # скрытых меню продолжают работать, их действия добавлены в виджет.
+        for menu in (self.script_editor.actions_menu, self.script_editor.settings_menu):
+            menu.menuAction().setVisible(False)
+        self.script_editor.replace_action.setVisible(False)
         self.editor = self.script_editor.editor
         self.highlighter = self.editor.highlighter
         self.editor.setPlainText(initial_text or "")

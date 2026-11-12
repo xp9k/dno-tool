@@ -355,7 +355,9 @@ class ScriptEditor(QWidget):
         self._mutating_actions = []
         self._last_match = None
         self._action('Найти…', 'Ctrl+F', self._focus_search, menu=self.search_menu)
-        self._action('Заменить…', 'Ctrl+H', lambda: self._focus_search(True), menu=self.search_menu)
+        # Замена изменяет текст: в режиме только чтения пункт и Ctrl+H выключены.
+        self.replace_action = self._action('Заменить…', 'Ctrl+H', lambda: self._focus_search(True), True,
+                                           menu=self.search_menu)
         self.search_menu.addSeparator()
         self._action('Следующее совпадение', 'F3', self.find, menu=self.search_menu)
         self._action('Предыдущее совпадение', 'Shift+F3', lambda: self.find(True), menu=self.search_menu)
