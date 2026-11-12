@@ -153,19 +153,49 @@ class PrepareDevicesPage(SetupPage):
             "своей связки - связка по умолчанию."
         )
         bundles_form.addRow("Связка для подключения:", self._connect_selector)
-        self._after_selector = BundleSelector(
-            bundles_box, allow_none=True, none_label=INHERIT_LABEL
+        # Связка «после»: обычно это связка по умолчанию шага «Хосты» (видна
+        # строкой); своя выбирается только с галочкой «Другая».
+        after_row = QWidget(bundles_box)
+        after_layout = QHBoxLayout(after_row)
+        after_layout.setContentsMargins(0, 0, 0, 0)
+        self._after_default_label = QLabel(after_row)
+        self._after_default_label.setToolTip(
+            "Под ней проверяется вход и ставятся остальные сервисы. Подготовленные "
+            "хосты остаются без своей связки и берут связку по умолчанию шага «Хосты»."
         )
+        after_layout.addWidget(self._after_default_label, 1)
+        self._after_selector = BundleSelector(after_row, allow_none=False)
         self._after_selector.setToolTip(
             "Под ней проверяется вход и ставятся остальные сервисы; при «Готово» она "
             "записывается подготовленным хостам в колонку «Связка» - только тем, где "
             "подготовка и проверочный вход прошли.\n"
             "Если такой учётной записи нет на хосте, нажмите «Добавить» под таблицей "
-            "учётных записей: строка добавится с логином и паролем этой связки.\n"
-            "«Наследовать глобальную» - хосты остаются без своей связки и берут "
-            "связку по умолчанию."
+            "учётных записей: строка добавится с логином и паролем этой связки."
         )
-        bundles_form.addRow("Связка после подготовки:", self._after_selector)
+        self._after_selector.setVisible(False)
+        after_layout.addWidget(self._after_selector, 1)
+        self._after_other = QCheckBox("Другая", after_row)
+        self._after_other.setToolTip(
+            "Выбрать связку после подготовки, отличную от связки по умолчанию"
+        )
+        after_layout.addWidget(self._after_other)
+        bundles_form.addRow("Связка после подготовки:", after_row)
+        # Под выбранной связкой «после»; видна только с галочкой «Другая».
+        self._after_default = QCheckBox(
+            "Использовать эту связку в дальнейшем по умолчанию", bundles_box
+        )
+        self._after_default.setToolTip(
+            "При «Готово» эта связка станет связкой по умолчанию программы, "
+            "подготовленные хосты будут её наследовать (своя связка хоста снимается). "
+            "Если связка входит не под root, общая настройка sudo берёт значение "
+            "галочки «Использовать sudo».\n"
+            "Подключение на шаге «Установка» это не меняет: до сохранения связка по "
+            "умолчанию остаётся той, что выбрана на шаге «Хосты»."
+        )
+        bundles_form.addRow("", self._after_default)
+        bundles_form.setRowVisible(self._after_default, False)
+        # Выбор пользователя: галочка неактивна, если связка уже по умолчанию.
+        self._after_default_wanted = False
         # Под полем выбора связки «после», в колонке полей формы; видна, только
         # если связка входит не под root (_update_after_sudo).
         self._after_sudo = QCheckBox("Использовать sudo", bundles_box)
@@ -321,6 +351,8 @@ class PrepareDevicesPage(SetupPage):
         self._default_key_marked = False
         self._connect_selector.changed.connect(self._on_connect_changed)
         self._after_selector.changed.connect(self._on_after_changed)
+        self._after_other.toggled.connect(self._on_after_other_toggled)
+        self._after_default.toggled.connect(self._on_after_default_toggled)
         self._accounts.itemChanged.connect(self._on_account_item_changed)
         self._key_users.itemChanged.connect(self._on_key_user_changed)
         self._update_revoke_label("")
@@ -363,8 +395,14 @@ class PrepareDevicesPage(SetupPage):
         ctx = self._ctx
         if ctx is None or ctx.credentials is None:
             return None
-        iid = self._after_selector.current_iid() or self._global_bundle_iid(ctx)
+        iid = self._after_iid() or self._global_bundle_iid(ctx)
         return next((b for b in ctx.credentials.bundles if b.iid == iid), None)
+
+    def _after_iid(self) -> str:
+        """Связка «после»; "" - связка по умолчанию (галочка «Другая» снята)."""
+        if not self._after_other.isChecked():
+            return ""
+        return self._after_selector.current_iid() or ""
 
     def _add_account(self, login="", password="", admin=False, nopasswd=False) -> None:
         row = self._accounts.rowCount()
@@ -507,7 +545,7 @@ class PrepareDevicesPage(SetupPage):
             for login, role in (
                 (self._bundle_login(ctx, self._connect_selector.current_iid()),
                  "связка для подключения"),
-                (self._bundle_login(ctx, self._after_selector.current_iid()),
+                (self._bundle_login(ctx, self._after_iid()),
                  "связка после подготовки"),
             ):
                 if login:
@@ -551,12 +589,40 @@ class PrepareDevicesPage(SetupPage):
 
     def _on_after_changed(self, _iid) -> None:
         self._update_after_sudo()
+        self._update_after_default()
         self._rebuild_key_users()
+
+    def _on_after_other_toggled(self, checked: bool) -> None:
+        self._after_default_label.setVisible(not checked)
+        self._after_selector.setVisible(checked)
+        self._on_after_changed(self._after_iid())
+
+    def _on_after_default_toggled(self, checked: bool) -> None:
+        if self._after_default.isEnabled():
+            self._after_default_wanted = checked
+
+    def _update_after_default(self) -> None:
+        """«Использовать эту связку в дальнейшем по умолчанию».
+
+        Видна только с выбранной своей связкой «после»; если она и так
+        связка по умолчанию, галочка отмечена и неактивна.
+        """
+        iid = self._after_iid()
+        self._bundles_form.setRowVisible(self._after_default, bool(iid))
+        already = bool(iid) and self._ctx is not None and iid == self._global_bundle_iid(
+            self._ctx
+        )
+        self._after_default.blockSignals(True)
+        try:
+            self._after_default.setEnabled(not already)
+            self._after_default.setChecked(already or self._after_default_wanted)
+        finally:
+            self._after_default.blockSignals(False)
 
     def _update_after_sudo(self) -> None:
         """«Использовать sudo» видна, только если связка «после» не под root."""
         login = (
-            self._bundle_login(self._ctx, self._after_selector.current_iid())
+            self._bundle_login(self._ctx, self._after_iid())
             if self._ctx is not None and self._ctx.credentials is not None
             else ""
         )
@@ -594,7 +660,11 @@ class PrepareDevicesPage(SetupPage):
         """В пунктах наследования видно, какая связка глобальная."""
         name = self._global_name(ctx)
         self._connect_selector.set_none_label(f"(связка хоста, иначе глобальная: {name})")
-        self._after_selector.set_none_label(f"(наследовать глобальную: {name})")
+        self._after_default_label.setText(
+            f"связка по умолчанию «{name}»"
+            if self._global_bundle_iid(ctx)
+            else "связка по умолчанию не задана"
+        )
 
     @staticmethod
     def _hosts_without_bundle(ctx) -> int:
@@ -644,6 +714,7 @@ class PrepareDevicesPage(SetupPage):
         self._update_inherit_labels(ctx)
         self._update_revoke_label(self._connect_login(ctx))
         self._update_after_sudo()
+        self._update_after_default()
         self._rebuild_key_users()
         self._reload_keys()
 
@@ -656,6 +727,7 @@ class PrepareDevicesPage(SetupPage):
                 keys = self._read_keys()
             except ValueError as error:
                 self._key_error = str(error)
+        after_iid = self._after_iid()
         ctx.prepare = PreparePlan(
             connect_bundle_iid=self._connect_selector.current_iid() or "",
             accounts=tuple(self._account_rows()),
@@ -667,9 +739,15 @@ class PrepareDevicesPage(SetupPage):
             permit_root=(
                 self._permit_combo.currentData() if self._permit_check.isChecked() else ""
             ),
-            after_bundle_iid=self._after_selector.current_iid() or "",
+            after_bundle_iid=after_iid,
             revoke_admin=self._revoke_check.isChecked(),
             after_use_sudo=self._after_sudo.isChecked(),
+            # Уже связка по умолчанию - менять нечего.
+            after_as_default=(
+                bool(after_iid)
+                and after_iid != self._global_bundle_iid(ctx)
+                and self._after_default.isChecked()
+            ),
         )
 
     def validate(self, ctx) -> tuple:
@@ -767,9 +845,9 @@ class PrepareDevicesPage(SetupPage):
             else "связка хоста, иначе глобальная: " + global_name
         )
         after = (
-            names.get(plan.after_bundle_iid, "—")
+            names.get(plan.after_bundle_iid, "-")
             if plan.after_bundle_iid
-            else "наследовать глобальную: " + global_name
+            else "связка по умолчанию: " + global_name
         )
         who = self._connect_login(ctx) or "учётной записи входа"
         text = (
@@ -786,9 +864,16 @@ class PrepareDevicesPage(SetupPage):
                if plan.revoke_admin else "")
             + f"связка после подготовки: «{escape(after)}»"
             + ("" if plan.after_use_sudo else ", без sudo")
+            + (", при «Готово» станет связкой по умолчанию"
+               if plan.after_as_default else "")
         )
         prepared = len(ctx.install_result.bundle_assignments)
-        if prepared:
+        if prepared and plan.after_as_default:
+            text += (
+                f". Записи {prepared} хост(ов) при сохранении будут наследовать "
+                "связку по умолчанию (своя связка хоста снимается)"
+            )
+        elif prepared:
             text += (
                 f". Записям {prepared} хост(ов) при сохранении будет назначена связка "
                 "после подготовки (своя связка хоста заменяется)"

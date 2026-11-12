@@ -15,10 +15,12 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -26,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.logger import logger
-from src.ui.icons import _icon_from_key
+from src.ui.icons import _icon_from_key, set_themed_icon
 from src.ui.dialogs.tools.ip_scanner import IPScannerDialog
 from src.ui.widgets.bundle_selector import BundleSelector, credential_service_for
 from src.ui.widgets.device_tree import DeviceTreeView
@@ -39,56 +41,75 @@ from src.workers.command_download import CommandDownloadWorker
 # с RemoteServiceInstallerWorker._resolve_credentials / _resolve_use_sudo и
 # сохранением мастера (apply_host_bundles).
 CREDENTIALS_HELP_HTML = """
-<h3>Обычная установка</h3>
-<p>Так мастер подключается, если шаг «Подготовка» не выбран.</p>
-<p><b>Логин и пароль</b> для каждого хоста берутся по порядку:</p>
-<ol>
-<li>Связка, выбранная у хоста в колонке «Связка».</li>
-<li>Если у хоста «(наследовать)», то <b>связка по умолчанию</b> из поля над таблицей.</li>
-<li>Если и её нет, вход под <b>root</b> без пароля. Он получится, только если
-на хосте уже есть SSH-ключ этой машины.</li>
-</ol>
-<p>SSH-ключ этой машины (шаг «SSH-ключи») пробуется всегда, вместе с паролем.
-Подойдёт любой из двух способов.</p>
+<h3>Что такое связка</h3>
+<p>Связка - это сохранённые логин и пароль, под которыми программа входит на
+компьютеры по SSH. Связки создаются и меняются в окне, которое открывает кнопка
+справа от списка связок.</p>
 
-<p><b>sudo</b> нужен, если вход идёт не под root:</p>
-<ol>
-<li>Значение в колонке «Sudo» у хоста: «Да» или «Нет».</li>
-<li>Если там «По умолчанию», решает галочка «Использовать sudo для входа не под root».</li>
-</ol>
-<p>Пароль для sudo тот же, что для входа. Под root sudo не используется.</p>
+<h3>Под каким логином программа входит на компьютер</h3>
+<ul>
+<li>Если у компьютера в колонке «Связка» выбрана связка, то под ней.</li>
+<li>Если там «(наследовать)», то под связкой из блока «Настройки входа по
+умолчанию». Обычно так и оставляют: одна связка на все компьютеры.</li>
+<li>Если связки по умолчанию нет, программа пробует войти под root по
+SSH-ключу. Это получится, только если ключ этого компьютера уже установлен
+на хосте.</li>
+</ul>
+<p>Кроме пароля программа всегда пробует и SSH-ключ с шага «SSH-ключи».
+Хватит любого из двух.</p>
 
-<h3>С подготовкой</h3>
-<p>Сначала на каждом хосте выполняется подготовка, затем ставится всё остальное.</p>
+<h3>Зачем нужен sudo</h3>
+<p>Для установки программ и служб нужны права администратора. Под root они есть
+сразу. Если вход идёт под обычной учётной записью (например, admin), программа
+выполняет такие команды через sudo, с паролем из той же связки.</p>
+<ul>
+<li>Колонка «Sudo» у компьютера: «Да» или «Нет» задают это явно.</li>
+<li>«По умолчанию» - решает галочка «Sudo» в блоке «Настройки входа по умолчанию».
+При выборе связки она ставится сама: для root снята, для остальных отмечена.</li>
+</ul>
 
-<p><b>Подготовка</b>, вход под заводской учётной записью:</p>
-<ol>
-<li>Связка в поле «Связка для подключения», если она выбрана.</li>
-<li>Иначе связка хоста из колонки «Связка».</li>
-<li>Иначе связка по умолчанию.</li>
-</ol>
-<p>Если не нашлось ни одной, хост пропускается.</p>
+<h3>Частые случаи</h3>
+<ul>
+<li><b>На всех компьютерах одинаковый пароль root.</b> Создайте связку root,
+выберите её связкой по умолчанию. Колонки «Связка» и «Sudo» не трогайте.</li>
+<li><b>На всех компьютерах одна учётная запись администратора (не root).</b>
+То же самое, только связка с этой учётной записью, галочка «Sudo» отмечена.</li>
+<li><b>На части компьютеров другой пароль.</b> Создайте для них отдельную связку
+и выберите её у этих компьютеров в колонке «Связка».</li>
+<li><b>Новые компьютеры с заводским образом</b> (войти можно только под
+учётной записью вроде teacher). Отметьте «Подготовку» на шаге «Начало»,
+см. ниже.</li>
+</ul>
 
-<p><b>Проверочный вход и установка остального</b> (SSH-ключи, Veyon, VNC, пакеты):</p>
-<ol>
-<li>Связка в поле «Связка после подготовки», если она выбрана.</li>
-<li>Иначе связка по умолчанию.</li>
-</ol>
-<p>Связка хоста из таблицы здесь <b>не используется</b>.</p>
-<p>sudo при подготовке включается всегда, если вход не под root: колонка «Sudo»
-и галочка не учитываются. Для установки остального sudo задаёт галочка
-«Использовать sudo» под «Связкой после подготовки» (она видна, если связка входит
-не под root).</p>
-<p>Если подготовка на хосте не удалась, остальное на нём не ставится.</p>
+<h3>Если выбрана «Подготовка»</h3>
+<p>На каждом компьютере сначала выполняется подготовка (создание учётных записей,
+пароль root, ключи), а затем установка остального.</p>
+<ul>
+<li><b>Подготовка</b> идёт под «Связкой для подключения» шага «Подготовка»
+(заводская учётная запись). Если там ничего не выбрано - под связкой компьютера
+из колонки «Связка», а если её нет, под связкой по умолчанию.
+Если вход не под root, sudo используется всегда.</li>
+<li><b>Всё остальное</b> программа ставит, уже входя под связкой по умолчанию.
+Другую связку можно выбрать на шаге «Подготовка» галочкой «Другая». sudo для этого
+этапа задаёт галочка «Использовать sudo» там же.</li>
+<li>Если подготовка на компьютере не удалась, остальное на нём не ставится.</li>
+</ul>
 
 <h3>Что сохранится после «Готово»</h3>
 <ul>
-<li>Хостам, где подготовка прошла, в колонку «Связка» записывается
-«Связка после подготовки». <b>Своя связка хоста заменяется.</b> Если эта связка
-входит не под root, «Sudo» становится «Да» или «Нет» по галочке «Использовать sudo».</li>
-<li>Остальные хосты сохраняются так, как заполнена таблица.</li>
-<li>Связка по умолчанию и галочка sudo сохраняются как общие настройки программы.
-Дальше программа подключается к хостам в том же порядке, что и при обычной установке.</li>
+<li>Связка и галочка sudo по умолчанию становятся общими настройками программы:
+дальше она входит на компьютеры так же, как описано выше.</li>
+<li>Компьютеры сохраняются с теми значениями «Связка» и «Sudo», что в таблице.</li>
+<li>Исключение - компьютеры, где подготовка прошла успешно: их прежняя связка
+заменяется той, под которой ставилось остальное.
+<ul>
+<li>Без галочки «Другая» в колонке «Связка» у них будет «(наследовать)».</li>
+<li>С «Другая» - выбранная там связка.</li>
+<li>Если отмечено ещё «Использовать эту связку в дальнейшем по умолчанию», она
+становится связкой по умолчанию, а у этих компьютеров будет «(наследовать)».</li>
+</ul>
+Если эта связка входит не под root, колонка «Sudo» у них получает значение
+галочки «Использовать sudo».</li>
 </ul>
 """
 
@@ -106,13 +127,13 @@ class HostsPage(SetupPage):
 
         hint = QLabel(
             "Добавьте хосты любым удобным способом:\n"
-            "• «Сканировать сеть» — автоматически найти хосты в заданном диапазоне IP.\n"
-            "• «Добавить хост» — ввести один хост вручную.\n"
-            "• «Добавить диапазон» — задать диапазон IP-адресов (CIDR или диапазон).\n"
-            "• «Добавить папку» — создать группу для сортировки хостов.\n\n"
+            "• «Сканировать сеть» - автоматически найти хосты в заданном диапазоне IP.\n"
+            "• «Добавить хост» - ввести один хост вручную.\n"
+            "• «Добавить диапазон» - задать диапазон IP-адресов (CIDR или диапазон).\n"
+            "• «Добавить папку» - создать группу для сортировки хостов.\n\n"
             "Перетаскивание (drag'n'drop):\n"
             "• Перетаскивайте хосты и папки внутри дерева, чтобы менять их расположение.\n"
-            "• Бросьте элемент на папку — он станет её дочерним.\n"
+            "• Бросьте элемент на папку - он станет её дочерним.\n"
             "• Чтобы добавить хосты в конкретную папку, выделите её перед добавлением."
         )
         hint.setWordWrap(True)
@@ -121,10 +142,10 @@ class HostsPage(SetupPage):
 
         # Связка по умолчанию - единственное место в мастере, где она
         # задаётся: при первом запуске окно связок открывается отсюда.
-        bundle_form = QFormLayout()
-        bundle_form.setContentsMargins(0, 0, 0, 0)
+        login_box = QGroupBox("Настройки входа по умолчанию", self)
+        bundle_form = QFormLayout(login_box)
         self._bundle_selector = BundleSelector(
-            self, allow_none=True, none_label="(нет связки)"
+            login_box, allow_none=True, none_label="(нет связки)"
         )
         self._bundle_selector.setToolTip(
             "Логин и пароль для хостов, у которых в колонке «Связка» выбрано "
@@ -132,20 +153,39 @@ class HostsPage(SetupPage):
             "создать и изменить."
         )
         self._bundle_selector.changed.connect(self._on_bundle_changed)
-        bundle_form.addRow(
-            "Связка по умолчанию (логин и пароль для доступа):", self._bundle_selector
-        )
+        self._bundle_selector.picked.connect(self._on_bundle_picked)
+        bundle_form.addRow("Связка (логин и пароль):", self._bundle_selector)
         # Общая настройка sudo - пара к связке по умолчанию: значение
         # «По умолчанию» в колонке «Sudo» означает её.
-        self._sudo_check = QCheckBox("Использовать sudo для входа не под root")
+        self._sudo_check = QCheckBox("Использовать для входа не под root", login_box)
         self._sudo_check.setToolTip(
             "Для хостов со значением «По умолчанию» в колонке «Sudo». Пароль sudo "
             "берётся из связки хоста.\n"
+            "При выборе связки отмечается сама: вход не под root - отмечена, под "
+            "root - снята.\n"
             "При входе под root не нужна. С выбранной «Подготовкой» вход не под "
             "root на шаге «Установка» всегда идёт через sudo."
         )
-        bundle_form.addRow(self._sudo_check)
-        layout.addLayout(bundle_form)
+        bundle_form.addRow("Sudo:", self._sudo_check)
+        login_hint = QLabel(
+            "Для хостов со значениями «(наследовать)» в колонке «Связка» и "
+            "«По умолчанию» в колонке «Sudo».",
+            login_box,
+        )
+        login_hint.setWordWrap(True)
+        login_hint.setStyleSheet("color: gray;")
+        # Нижняя строка блока: пояснение, справка о связках в правом углу.
+        help_row = QHBoxLayout()
+        self._help_btn = QToolButton(login_box)
+        set_themed_icon(self._help_btn, "menu_info")
+        self._help_btn.setAutoRaise(True)
+        self._help_btn.setToolTip("Логины и пароли: как программа входит на компьютеры")
+        self._help_btn.setAccessibleName("Логины и пароли")
+        self._help_btn.clicked.connect(self._show_credentials_help)
+        help_row.addWidget(login_hint, 1)
+        help_row.addWidget(self._help_btn, 0, Qt.AlignmentFlag.AlignBottom)
+        bundle_form.addRow(help_row)
+        layout.addWidget(login_box)
 
         btn_row = QHBoxLayout()
         self._scan_btn = QPushButton(_icon_from_key("menu_scanner"), "Сканировать сеть")
@@ -169,14 +209,6 @@ class HostsPage(SetupPage):
         btn_row.addWidget(self._clear_hosts_btn)
 
         btn_row.addStretch()
-
-        self._help_btn = QPushButton(_icon_from_key("menu_info"), "")
-        self._help_btn.setToolTip(
-            "Логины и пароли: в каком порядке мастер берёт связки и sudo"
-        )
-        self._help_btn.setAccessibleName("Логины и пароли")
-        self._help_btn.clicked.connect(self._show_credentials_help)
-        btn_row.addWidget(self._help_btn)
 
         layout.addLayout(btn_row)
 
@@ -213,10 +245,27 @@ class HostsPage(SetupPage):
         ) if ctx.credentials is not None else None
         name = (bundle.description or bundle.login) if bundle else "не задана"
         sudo = "да" if ctx.use_sudo else "нет"
-        return (
+        text = (
             f"<b>Хосты:</b> {n}; связка по умолчанию: {escape(name)}; "
             f"sudo по умолчанию: {sudo}"
         )
+        prepare = getattr(ctx, "prepare", None)
+        if (
+            ctx.services.get("prepare")
+            and prepare is not None
+            and prepare.after_as_default
+            and ctx.credentials is not None
+        ):
+            after = next(
+                (b for b in ctx.credentials.bundles if b.iid == prepare.after_bundle_iid),
+                None,
+            )
+            if after is not None:
+                text += (
+                    "; при «Готово» связкой по умолчанию станет "
+                    f"{escape(after.description or after.login)} (шаг «Подготовка»)"
+                )
+        return text
 
     def _show_credentials_help(self) -> None:
         from PySide6.QtWidgets import QDialogButtonBox, QTextBrowser
@@ -240,6 +289,25 @@ class HostsPage(SetupPage):
         # Сигнал приходит и после закрытия окна связок: подписи в колонке
         # могли устареть (переименование, удаление).
         self._refresh_bundle_labels()
+
+    def _on_bundle_picked(self, iid) -> None:
+        """Выбор связки пользователем ставит галочку sudo по её логину.
+
+        Программная смена (вход на страницу, закрытие окна связок) сюда не
+        приходит: сохранённое значение галочки не перезаписывается.
+        """
+        if not iid:
+            return
+        try:
+            service = credential_service_for(self)
+            bundles = service.get_bundles() if service else []
+        except Exception:
+            bundles = []
+        bundle = next((b for b in bundles if b.get("iid") == iid), None)
+        if bundle is None:
+            return
+        login = (bundle.get("login") or "").strip()
+        self._sudo_check.setChecked(login not in ("", "root"))
 
     def _refresh_bundle_labels(self) -> None:
         # Связки мастера - черновик, а не рабочий CredentialService.
@@ -294,7 +362,7 @@ class HostsPage(SetupPage):
         dlg.exec()
 
     def _on_scanner_import(self, devices, folder):
-        """Импорт устройств из сканера — делегируется DeviceTreeView."""
+        """Импорт устройств из сканера - делегируется DeviceTreeView."""
         if self._hosts_tree is not None:
             self._hosts_tree.add_devices_at_selected_folder(devices, folder)
 

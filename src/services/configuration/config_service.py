@@ -71,11 +71,38 @@ class ConfigService(BaseService):
                         raise RuntimeError("Настройки подключения изменились. Откройте мастер заново.")
                 next_app = deepcopy(current)
                 next_app.credentials = deepcopy(ctx.credentials)
-                # Связка и sudo по умолчанию задаются на шаге «Хосты» (он есть всегда).
+                # Связка и sudo по умолчанию задаются на шаге «Хосты» (он есть
+                # всегда); шаг «Подготовка» может заменить их связкой «после».
                 next_app.credentials.default_bundle_iid = ctx.default_bundle_iid or None
                 next_app.ssh.use_sudo = bool(ctx.use_sudo)
                 hosts_data = ctx.hosts_data
                 assignments = dict(ctx.install_result.bundle_assignments)
+                prepare = getattr(getattr(ctx, "install_plan", None), "prepare", None)
+                if prepare is None and ctx.services.get("prepare"):
+                    prepare = getattr(ctx, "prepare", None)
+                # «Использовать эту связку в дальнейшем по умолчанию» на шаге
+                # «Подготовка»: связка «после» становится связкой по умолчанию,
+                # подготовленные хосты её наследуют.
+                if (
+                    ctx.services.get("prepare")
+                    and prepare is not None
+                    and prepare.after_as_default
+                    and prepare.after_bundle_iid
+                ):
+                    new_default = prepare.after_bundle_iid
+                    login = next(
+                        (b.login for b in next_app.credentials.bundles if b.iid == new_default),
+                        None,
+                    )
+                    if login is None:
+                        raise ValueError("Связка после подготовки не найдена")
+                    next_app.credentials.default_bundle_iid = new_default
+                    if (login or "root") != "root":
+                        next_app.ssh.use_sudo = bool(prepare.after_use_sudo)
+                    assignments = {
+                        iid: ("" if bundle_iid == new_default else bundle_iid)
+                        for iid, bundle_iid in assignments.items()
+                    }
                 if assignments:
                     from src.services.configuration.setup_draft import apply_host_bundles
 
@@ -86,7 +113,6 @@ class ConfigService(BaseService):
                         raise ValueError("Связка для подготовленных хостов не найдена")
                     # Вход не под root на подготовленном хосте: sudo - как при
                     # установке (галочка «Использовать sudo» связки «после»).
-                    prepare = getattr(getattr(ctx, "install_plan", None), "prepare", None)
                     after_sudo = bool(getattr(prepare, "after_use_sudo", True))
                     use_sudo = {
                         iid: (after_sudo if (logins[iid] or "root") != "root" else None)

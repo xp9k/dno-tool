@@ -44,6 +44,9 @@ class PreparePlan:
     wheel и sudo (последним шагом подготовки).
     after_use_sudo - остальные сервисы под связкой «после» (не root) идут
     через sudo. Подготовка под учётной записью не root - всегда через sudo.
+    after_as_default - при сохранении мастера связка «после» становится
+    связкой по умолчанию, подготовленные хосты её наследуют; worker его не
+    читает (подключение во время установки не меняется).
     """
 
     connect_bundle_iid: str = ""
@@ -55,6 +58,7 @@ class PreparePlan:
     after_bundle_iid: str = ""
     revoke_admin: bool = False
     after_use_sudo: bool = True
+    after_as_default: bool = False
 
     def __post_init__(self):
         object.__setattr__(
@@ -81,7 +85,7 @@ def validate_prepare(plan, bundles=None, default_iid=""):
 
     bundles - {iid: (login, password)}; без него связки не проверяются
     (worker проверяет их при подключении). default_iid - глобальная связка,
-    которой заменяется пустой iid «после» («наследовать глобальную»); пустой
+    которой заменяется пустой iid «после» (связка по умолчанию); пустой
     вход - своя связка хоста, иначе глобальная.
     """
     if not isinstance(plan, PreparePlan):
@@ -133,15 +137,18 @@ def validate_prepare(plan, bundles=None, default_iid=""):
         raise ValueError("Некорректный признак отзыва прав")
     if type(plan.after_use_sudo) is not bool:
         raise ValueError("Некорректный признак sudo после подготовки")
+    if type(plan.after_as_default) is not bool:
+        raise ValueError("Некорректный признак связки по умолчанию")
+    if plan.after_as_default and not plan.after_bundle_iid:
+        raise ValueError("Связкой по умолчанию можно сделать только выбранную связку")
     if bundles is None:
         return
     # Пустой вход - своя связка хоста, иначе глобальная: логин известен
     # только для каждого хоста, проверяет worker (check_prepare_logins).
     if not plan.after_bundle_iid and not (default_iid and default_iid in bundles):
         raise ValueError(
-            "«Связка после подготовки»: выбрано «наследовать глобальную», но "
-            "связка по умолчанию не задана. Выберите связку в списке или задайте "
-            "связку по умолчанию на шаге «Хосты»."
+            "«Связка после подготовки»: связка по умолчанию не задана. Задайте её "
+            "на шаге «Хосты» или отметьте «Другая» и выберите связку."
         )
     connect_login = None
     if plan.connect_bundle_iid:
