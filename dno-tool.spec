@@ -15,6 +15,21 @@ from master_key import datas as master_key_datas
 _master_datas = master_key_datas(workpath)
 
 
+def _setup_installer_modules():
+    """Модули установщиков мастера: worker импортирует их по строке.
+
+    Список берётся из каталога, а не вручную: забытый модуль в сборке даёт
+    «Не удалось выполнить установщик сервиса». collect_submodules не подходит:
+    он импортирует пакеты src при сборке.
+    """
+    folder = os.path.join(SPECPATH, "src", "workers", "setup", "installers")
+    return sorted(
+        "src.workers.setup.installers." + name[:-3]
+        for name in os.listdir(folder)
+        if name.endswith(".py") and name != "__init__.py"
+    )
+
+
 def _icon_datas():
     """Файлы assets/icons без папок тем: темы едут zip-архивами.
 
@@ -165,20 +180,11 @@ a = Analysis(
         'src.workers.node.status',
         'src.workers.node.thumbnails',
         'src.workers.node.command_worker',
-        'src.workers.setup.installers.ssh',
-        'src.workers.setup.installers.packages',
-        'src.workers.setup.installers.veyon',
-        'src.workers.setup.installers.vnc',
-        'src.workers.setup.installers.x11vnc',
-        'src.workers.setup.installers.krfb',
-        'src.workers.setup.installers.vnc_common',
-        'src.workers.setup.installers.system_vnc',
-        'src.workers.setup.installers.kmsvnc',
         'src.workers.setup.phases',
         'src.workers.setup.packages',
         'src.ui.dialogs.wizard.setups.service',
         'src.ui.dialogs.tools.node_settings',
-    ] + collect_submodules('fastapi') + collect_submodules('uvicorn') \
+    ] + _setup_installer_modules() + collect_submodules('fastapi') + collect_submodules('uvicorn') \
       + collect_submodules('pydantic') + collect_submodules('starlette') \
       + collect_submodules('multipart') + collect_submodules('python_multipart') \
       + collect_submodules('psutil') + collect_submodules('icmplib') \

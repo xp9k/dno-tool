@@ -655,8 +655,20 @@ class RemoteServiceInstallerWorker(BaseWorker):
                     context = replace(operation_context, options=dict(self.service_options).get(descriptor.key, ()))
                     installer = getattr(import_module(module), name)(context)
                     installer.install(device, ssh, run_cmd, write_file, sftp_append)
-                except Exception:
-                    self._report(device, descriptor.key, RESULT_ERROR, "Не удалось выполнить установщик сервиса")
+                except Exception as error:
+                    # Тип ошибки - в ячейку, подробности - в журнал: иначе
+                    # причину (например, модуль, не попавший в сборку) не найти.
+                    logger.exception(
+                        "RemoteServiceInstallerWorker: установщик %s не выполнен",
+                        descriptor.key,
+                    )
+                    self._report(
+                        device,
+                        descriptor.key,
+                        RESULT_ERROR,
+                        "Не удалось выполнить установщик сервиса: "
+                        + type(error).__name__,
+                    )
             return True
         finally:
             with self._result_lock:
