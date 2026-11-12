@@ -5065,7 +5065,7 @@
                         "description": "Установка учебной версии КОМПАС-3D v25 из репозитория АСКОН по умолчанию. Требуется лицензия вендора. Пакет install-kompas-v25 после установки не удалять.",
                         "iid": "9f7004cadb0842c5bc3681125939e5c0",
                         "name": "Установить КОМПАС-3D v25 (Учебная)",
-                        "timeout": 3600
+                        "timeout": 7200
                     },
                     {
                         "commands": [
@@ -5406,32 +5406,6 @@
                         "name": "Снести правила",
                         "params": [],
                         "timeout": 30
-                    }
-                ]
-            },
-            {
-                "Доски": [
-                    {
-                        "commands": [
-                            {
-                                "text": "%param4%::%login%@%hostname%:/tmp/dno-root-key-%param4:filename%",
-                                "type": "sftp"
-                            },
-                            {
-                                "text": "key_file=\"/tmp/dno-root-key-$(printf '%s' '%param4:filename:base64%' | base64 -d)\"\ntrap 'rm -f \"$key_file\"' EXIT\nif [ \"$(id -u)\" -ne 0 ]; then\n    echo \"Ошибка: нужны права root. Включите sudo для хоста (вход под %login%)\"\n    exit 1\nfi\nuser=$(printf '%s' '%param1:base64%' | base64 -d)\nuser_password=$(printf '%s' '%param2:base64%' | base64 -d)\nroot_password=$(printf '%s' '%param3:base64%' | base64 -d)\nif [ ! -f \"$key_file\" ]; then\n    echo \"Ошибка: файл ключа не скопирован на хост\"\n    exit 1\nfi\n# Строки ключей без пустых строк и комментариев.\nroot_keys=$(tr -d '\\r' < \"$key_file\" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v -e '^$' -e '^#')\n\n# Сначала проверяем все параметры, чтобы не изменить хост наполовину.\nif ! printf '%s' \"$user\" | grep -Eqx '[a-z_][a-z0-9_-]{0,31}'; then\n    echo \"Ошибка: недопустимое имя пользователя «$user» (строчные латинские буквы, цифры, _ и -)\"\n    exit 1\nfi\nif [ \"$user\" = \"root\" ]; then\n    echo \"Ошибка: новый пользователь не может называться root\"\n    exit 1\nfi\nif entry=$(getent passwd \"$user\"); then\n    uid=$(echo \"$entry\" | cut -d: -f3)\n    min=$(awk '$1 == \"UID_MIN\" {print $2}' /etc/login.defs 2>/dev/null)\n    if [ \"$uid\" -lt \"${min:-1000}\" ]; then\n        echo \"Ошибка: $user - системная учётная запись (UID $uid)\"\n        exit 1\n    fi\nfi\nfor value in \"$user_password\" \"$root_password\"; do\n    if [ -z \"$value\" ]; then\n        echo \"Ошибка: пароль не может быть пустым\"\n        exit 1\n    fi\n    if [ \"$(printf '%s\\n' \"$value\" | wc -l)\" -ne 1 ]; then\n        echo \"Ошибка: пароль не может содержать перевод строки\"\n        exit 1\n    fi\ndone\nif [ -z \"$root_keys\" ]; then\n    echo \"Ошибка: в выбранном файле нет ключей\"\n    exit 1\nfi\nif printf '%s\\n' \"$root_keys\" | grep -Evq '^(ssh-[a-z0-9]+|ecdsa-sha2-[a-z0-9]+|sk-[a-z0-9@.-]+)[[:space:]]+AAAA[A-Za-z0-9+/=]+([[:space:]].*)?$'; then\n    echo \"Ошибка: выбранный файл не похож на открытый SSH-ключ (нужен файл .pub, строки «ssh-ed25519 AAAA...» или «ssh-rsa AAAA...»)\"\n    exit 1\nfi\n\n# 1. Пользователь\nif id \"$user\" >/dev/null 2>&1; then\n    echo \"Пользователь $user уже есть, пароль будет заменён\"\nelse\n    useradd -m \"$user\" || exit 1\n    echo \"Пользователь $user создан\"\nfi\nprintf '%s:%s\\n' \"$user\" \"$user_password\" | chpasswd || exit 1\necho \"Пароль пользователя $user задан\"\n\n# 2. Пароль root\nprintf 'root:%s\\n' \"$root_password\" | chpasswd || exit 1\necho \"Пароль root изменён\"\n\n# 3. Ключ root\nroot_home=$(getent passwd root | cut -d: -f6)\nroot_home=${root_home:-/root}\nkeys=\"$root_home/.ssh/authorized_keys\"\ninstall -d -m 700 -o root -g root \"$root_home/.ssh\" || exit 1\ntouch \"$keys\" || exit 1\nchown root:root \"$keys\"\nchmod 600 \"$keys\"\nif [ -s \"$keys\" ] && [ -n \"$(tail -c 1 \"$keys\")\" ]; then\n    echo >> \"$keys\"\nfi\nprintf '%s\\n' \"$root_keys\" | while IFS= read -r key; do\n    if grep -Fxq -- \"$key\" \"$keys\"; then\n        echo \"Ключ уже есть в $keys\"\n    else\n        printf '%s\\n' \"$key\" >> \"$keys\" || exit 1\n        echo \"Ключ добавлен в $keys\"\n    fi\ndone || exit 1\nif command -v restorecon >/dev/null 2>&1; then\n    restorecon -R \"$root_home/.ssh\"\nfi\n\n# 4. root в /etc/ssh/denyusers\nif [ ! -f /etc/ssh/denyusers ]; then\n    echo \"Файла /etc/ssh/denyusers нет\"\nelif grep -Eq '^[[:space:]]*root[[:space:]]*$' /etc/ssh/denyusers; then\n    sed -i -E '/^[[:space:]]*root[[:space:]]*$/d' /etc/ssh/denyusers || exit 1\n    echo \"root убран из /etc/ssh/denyusers\"\nelse\n    echo \"В /etc/ssh/denyusers root не указан\"\nfi\n\n# Предупреждения о настройках sshd, которые эта задача не меняет.\nsshd_conf=$(sshd -T 2>/dev/null)\nif printf '%s\\n' \"$sshd_conf\" | grep -Eqi '^permitrootlogin[[:space:]]+no$'; then\n    echo \"Внимание: PermitRootLogin no - вход root по ключу не сработает (задача «Разрешить root SSH»)\"\nfi\nif printf '%s\\n' \"$sshd_conf\" | grep -Eqi '^denyusers[[:space:]].*(^|[[:space:],])root([[:space:],]|$)'; then\n    echo \"Внимание: root указан в DenyUsers в sshd_config\"\nfi\necho \"Готово\"",
-                                "type": "ssh"
-                            }
-                        ],
-                        "description": "Подготовка доски с заводским образом. Подключение под учётной записью с sudo (teacher, sudo для хоста должен быть включён). Создаёт пользователя с паролем (существующему меняет пароль), меняет пароль root, добавляет открытые SSH-ключи root из выбранного файла .pub и убирает root из /etc/ssh/denyusers. Параметры проверяются до изменений",
-                        "iid": "85626462455246a5ba28c23114f15031",
-                        "name": "Подготовка доски",
-                        "params": [
-                            "Имя нового пользователя",
-                            "Пароль нового пользователя",
-                            "Новый пароль root",
-                            "file:Открытый SSH-ключ для root (.pub)"
-                        ],
-                        "timeout": 60
                     }
                 ]
             }
