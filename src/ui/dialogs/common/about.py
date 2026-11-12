@@ -7,14 +7,26 @@ import subprocess
 import platform
 from pathlib import Path
 
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QMessageBox
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont, QCursor, QDesktopServices
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QToolButton,
+    QVBoxLayout,
+)
+from PySide6.QtCore import Qt, QThread, Signal, QSize
+from PySide6.QtGui import QFont, QCursor, QDesktopServices, QPalette
 from PySide6.QtCore import QUrl
 
 from src import __version__
+from src.config.settings import get_asset_path
 from src.services.updater import check_for_update, is_installed_as_package
 from src.services.updater import _get_headers, _is_version_tag, _get_downloads_dir
+from src.ui.icons import set_themed_icon
+from src.ui.widgets.module_player import ModuleMusicPlayer, load_module
+from src.ui.widgets.wave_backdrop import WaveBackdrop
 from src.utils.network.https import create_https_context
 from src.workers.qthread_registry import track_qthread
 
@@ -180,11 +192,30 @@ class UpdateDownloadThread(QThread):
             )
 
 
+MUSIC_FILE = "music/about.xm"
+_VIEW_STATE_ID = "about_dialog"
+# Выключение звука без ViewState (окно открыто без главного окна) живёт до выхода.
+_session_muted = False
+
+
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("О программе")
-        self.setFixedSize(400, 280)
+        self.setFixedSize(440, 330)
+
+        self._view_state = getattr(parent, "view_state", None)
+        if self._view_state is not None:
+            self._view_state.register(_VIEW_STATE_ID, persist=True)
+        self._music: ModuleMusicPlayer | None = None
+        module = load_module(get_asset_path(MUSIC_FILE))
+        if module is not None:
+            self._music = ModuleMusicPlayer(module, self)
+        self._backdrop = WaveBackdrop(
+            self, self._music.level if self._music is not None else None
+        )
+        self._backdrop.setGeometry(self.rect())
+        self._backdrop.lower()
 
         layout = QVBoxLayout(self)
 
@@ -230,6 +261,8 @@ class AboutDialog(QDialog):
         layout.addWidget(self.update_btn)
         layout.addWidget(author_label)
         layout.addWidget(link_label)
+        layout.addStretch(1)
+        layout.addLayout(self._build_music_row(module))
 
         self._closed = False
         self._download_thread: UpdateDownloadThread | None = None
@@ -237,11 +270,90 @@ class AboutDialog(QDialog):
         self._check_thread.result_ready.connect(self._on_check_result)
         self._check_thread.start()
 
+    def _build_music_row(self, module) -> QHBoxLayout:
+        """Строка внизу: авторы музыки из файла модуля слева, кнопка звука справа."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        self.music_credits_label = QLabel()
+        self.mute_button = QToolButton()
+        self.mute_button.setAutoRaise(True)
+        self.mute_button.setCheckable(True)
+        self.mute_button.setIconSize(QSize(18, 18))
+        self.mute_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.mute_button.toggled.connect(self._on_mute_toggled)
+        row.addWidget(self.music_credits_label, 1, Qt.AlignmentFlag.AlignBottom)
+        row.addWidget(self.mute_button, 0, Qt.AlignmentFlag.AlignBottom)
+        if module is None:
+            self.music_credits_label.hide()
+            self.mute_button.hide()
+            return row
+
+        credits = module.credits()
+        font = self.music_credits_label.font()
+        font.setPointSizeF(max(7.0, font.pointSizeF() - 1.0))
+        self.music_credits_label.setFont(font)
+        palette = self.music_credits_label.palette()
+        palette.setColor(
+            QPalette.ColorRole.WindowText,
+            palette.color(QPalette.ColorRole.PlaceholderText),
+        )
+        self.music_credits_label.setPalette(palette)
+        self.music_credits_label.setText("♪ " + " · ".join(credits))
+        self.music_credits_label.setToolTip(
+            "Музыка в окне (модуль XM):\n" + "\n".join(credits)
+        )
+        self.music_credits_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+        muted = self._load_muted()
+        self.mute_button.blockSignals(True)
+        self.mute_button.setChecked(muted)
+        self.mute_button.blockSignals(False)
+        self._apply_mute(muted)
+        return row
+
+    def _load_muted(self) -> bool:
+        if self._view_state is not None:
+            return bool(self._view_state.get(_VIEW_STATE_ID, "music_muted", False))
+        return _session_muted
+
+    def _on_mute_toggled(self, muted: bool) -> None:
+        global _session_muted
+        _session_muted = muted
+        if self._view_state is not None:
+            self._view_state.set(_VIEW_STATE_ID, "music_muted", muted, track_change=False)
+        self._apply_mute(muted)
+
+    def _apply_mute(self, muted: bool) -> None:
+        set_themed_icon(self.mute_button, "ve_mute" if muted else "ve_volume")
+        self.mute_button.setToolTip("Включить музыку" if muted else "Выключить музыку")
+        if self._music is None:
+            return
+        if muted:
+            self._music.stop()
+        elif self.isVisible():
+            self._music.start()
+
+    def showEvent(self, event) -> None:  # noqa: N802 - имя Qt
+        super().showEvent(event)
+        if self._music is not None and not self.mute_button.isChecked():
+            self._music.start()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - имя Qt
+        super().resizeEvent(event)
+        backdrop = getattr(self, "_backdrop", None)
+        if backdrop is not None:
+            backdrop.setGeometry(self.rect())
+
     def done(self, result: int) -> None:
         """Закрыть окно без ожидания сети: потоки учтены в реестре и завершатся сами."""
         self._closed = True
         if self._download_thread is not None:
             self._download_thread.requestInterruption()
+        if self._music is not None:
+            self._music.stop()
+        self._backdrop.stop()
         super().done(result)
 
     def _on_check_result(self, result: dict):
@@ -258,7 +370,7 @@ class AboutDialog(QDialog):
             return
 
         if result.get("error"):
-            # Тихий режим: если fallback тоже недоступен — ничего не говорим.
+            # Тихий режим: если fallback тоже недоступен, ничего не говорим.
             self.version_label.setText(
                 f"<font color='green'>Установлена последняя версия "
                 f"({result.get('current_version', '?')})</font>"

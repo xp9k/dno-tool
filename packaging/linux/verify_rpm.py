@@ -39,6 +39,7 @@ def main() -> int:
         "/opt/dno-tool/assets/icons/themes.json",
         "/opt/dno-tool/assets/custom/mono.zip",
         "/opt/dno-tool/assets/custom/color.zip",
+        "/opt/dno-tool/assets/music/about.xm",
         "/usr/bin/dno-tool",
         "/usr/bin/dno-tool-admin",
         "/usr/share/applications/com.dno-tool.desktop",

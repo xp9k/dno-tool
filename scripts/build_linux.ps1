@@ -158,7 +158,7 @@ try {
         'packaging/policykit/com.dno-tool.policy', 'packaging/policykit/com.dno-tool.desktop',
         'packaging/policykit/com.dno-tool-admin.desktop', 'packaging/policykit/dno-tool-admin',
         'assets/themes', 'assets/icons/icon.png', 'assets/icons/themes.json',
-        'assets/custom/mono.zip', 'assets/custom/color.zip', 'assets/remote',
+        'assets/custom/mono.zip', 'assets/custom/color.zip', 'assets/remote', 'assets/music/about.xm',
         'src/web/static/lib/novnc.bundle.min.js', 'src/workers/gst_rtsp_server.py',
         'src/workers/remote_session_lock.py'
     )

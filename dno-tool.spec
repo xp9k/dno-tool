@@ -78,6 +78,8 @@ a = Analysis(
         ('assets/themes', 'assets/themes'),
         # Пакеты, которые мастер настройки ставит на хосты (kmsvnc).
         ('assets/remote', 'assets/remote'),
+        # Музыка окна «О программе» (модуль XM).
+        ('assets/music', 'assets/music'),
         ('src/workers/gst_rtsp_server.py', 'src/workers'),
         ('src/workers/remote_recording_runtime.py', 'src/workers'),
         ('src/workers/remote_session_lock.py', 'src/workers'),

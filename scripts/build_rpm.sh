@@ -119,6 +119,8 @@ pyinstaller dno-tool-linux.spec
 python packaging/master_key.py check dist/dno-tool
 mkdir -p dist/dno-tool/assets
 cp -a assets/themes dist/dno-tool/assets/
+# Музыка окна «О программе» (модуль XM).
+cp -a assets/music dist/dno-tool/assets/
 dno_stage media
 python packaging/media/verify.py audit dist/dno-tool/dno-tool --report "${REPORT_DIR}/media-package-report-${PACKAGE_TARGET}.json"
 python packaging/media/verify.py smoke dist/dno-tool/dno-tool --report "${REPORT_DIR}/media-runtime-report-${PACKAGE_TARGET}.json"
