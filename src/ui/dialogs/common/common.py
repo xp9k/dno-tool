@@ -18,9 +18,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
     QComboBox,
-    QToolButton,
-    QScrollArea,
-    QFrame,
     QTabWidget,
 )
 from PySide6.QtCore import Qt, QTimer
@@ -48,20 +45,28 @@ class DeviceEditDialog(QDialog):
         self.setWindowTitle("Редактирование устройства")
         self._init_ui()
 
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        self.setMinimumWidth(320)
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._content = QWidget()
-        content_layout = QVBoxLayout(self._content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    @staticmethod
+    def _make_tab(tabs: QTabWidget, title: str) -> QFormLayout:
+        """Вкладка с формой; строки прижаты кверху, свободное место снизу."""
+        page = QWidget()
+        outer = QVBoxLayout(page)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
-        content_layout.addLayout(form)
+        outer.addLayout(form)
+        outer.addStretch(1)
+        tabs.addTab(page, title)
+        return form
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        self.setMinimumWidth(380)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, 1)
+
+        node_iid = getattr(self.device, "node_iid", None)
+
+        # Вкладка «Основное»: имя хоста, адрес и MAC для Wake-on-LAN.
+        form = self._make_tab(self.tabs, "Основное")
 
         self.name_label = QLabel("Имя:")
         self.name_edit = QLineEdit(self.device.name)
@@ -72,14 +77,25 @@ class DeviceEditDialog(QDialog):
         self.host_edit.setPlaceholderText("IP-адрес или имя хоста")
         form.addRow(self.host_label, self.host_edit)
 
-        self.user_label = QLabel("Связка учётных данных:")
+
+        self.mac_label = QLabel("MAC-адрес:")
+        self.mac_edit = QLineEdit(self.device.mac_address or "")
+        self.mac_edit.setPlaceholderText("00:11:22:33:44:55")
+        self.mac_edit.setToolTip("MAC-адрес для включения хоста через Wake-on-LAN.")
+        form.addRow(self.mac_label, self.mac_edit)
+
+        # Вкладка «SSH»: данные для входа, порт, локаль команд и исключение sudo.
+        ssh_form = self._make_tab(self.tabs, "SSH")
+        self.ssh_tab = self.tabs.widget(self.tabs.count() - 1)
+
+        self.user_label = QLabel("Данные для входа:")
+        self.user_label.setToolTip("Связка учётных данных для входа на хост.")
         from src.ui.widgets.bundle_selector import BundleSelector
 
         self.bundle_selector = BundleSelector(
             allow_none=True, none_label="(наследовать глобальную)"
         )
         self.bundle_selector.set_current_iid(self.device.credential_bundle_iid)
-        node_iid = getattr(self.device, "node_iid", None)
         if node_iid and node_iid != "local":
             bundle_iid = self.device.credential_bundle_iid
             if bundle_iid and self.bundle_selector.current_iid() != bundle_iid:
@@ -89,42 +105,18 @@ class DeviceEditDialog(QDialog):
             self.bundle_selector.setToolTip(
                 "Связки учетных данных изменяются на ноде-владельце."
             )
-        form.addRow(self.user_label, self.bundle_selector)
+        ssh_form.addRow(self.user_label, self.bundle_selector)
 
-        self._advanced_toggle = QToolButton()
-        self._advanced_toggle.setText("Дополнительно")
-        self._advanced_toggle.setAccessibleName("Дополнительные параметры хоста")
-        self._advanced_toggle.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
-        self._advanced_toggle.setCheckable(True)
-        self._advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
-        content_layout.addWidget(self._advanced_toggle)
-        self._advanced = QWidget()
-        advanced_layout = QVBoxLayout(self._advanced)
-        advanced_layout.setContentsMargins(0, 0, 0, 0)
-        ssh_group = QGroupBox("SSH")
-        ssh_form = QFormLayout(ssh_group)
-        ssh_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
-        ssh_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        advanced_layout.addWidget(ssh_group)
-
-        # Исключение sudo: при логине не root права повышаются всегда, галочка
-        # нужна для учёток без прав sudo и команд от самого пользователя входа.
-        self.no_sudo_check = QCheckBox("Не повышать права через sudo")
-        self.no_sudo_check.setChecked(self.device.use_sudo is False)
-        self.no_sudo_check.setToolTip(
-            "При входе не под root команды выполняются через sudo, пароль берётся\n"
-            "из связки. Отметьте, если у учётной записи нет прав sudo или команды\n"
-            "должны работать от самого пользователя входа (его HOME, его файлы).\n"
-            "Вход под root галочка не меняет."
-        )
-        ssh_form.addRow(self.no_sudo_check)
+        self.port_label = QLabel("Порт SSH:")
+        self.port_edit = QSpinBox()
+        self.port_edit.setRange(1, 65535)
+        self.port_edit.setValue(self.device.port or 22)
+        ssh_form.addRow(self.port_label, self.port_edit)
 
         # Локаль: editable QComboBox с пунктами «По умолчанию (наследовать)»,
         # «(отключить)» и стандартными локалями. None = наследовать SSHConfig.locale;
         # строка (в т.ч. пустая "" = «(отключить)») = per-device override.
-        # Пункт «По умолчанию» — непустой sentinel, в accept/get_updated_device
+        # Пункт «По умолчанию» - непустой sentinel, в accept/get_updated_device
         # маппится обратно на None.
         self.locale_combo = QComboBox()
         self.locale_combo.setEditable(True)
@@ -134,7 +126,7 @@ class DeviceEditDialog(QDialog):
         self.locale_combo.addItem(self._LOCALE_DISABLED)
         for loc in STANDARD_LOCALES:
             self.locale_combo.addItem(loc)
-        # device.locale: None → «По умолчанию», "" → «(отключить)», строка → она
+        # device.locale: None -> «По умолчанию», "" -> «(отключить)», строка -> она
         cur_locale = self.device.locale
         if cur_locale is None:
             self.locale_combo.setCurrentIndex(0)
@@ -150,25 +142,28 @@ class DeviceEditDialog(QDialog):
         self.locale_combo.setToolTip(
             "Локаль, экспортируемая перед выполнением SSH-команд на этом хосте\n"
             "(LANG/LC_ALL/LC_CTYPE).\n\n"
-            "«По умолчанию» — наследует глобальную настройку SSH.\n"
-            "«(отключить)» — не экспортировать локаль (если на хосте\n"
+            "«По умолчанию» - наследует глобальную настройку SSH.\n"
+            "«(отключить)» - не экспортировать локаль (если на хосте\n"
             "ru_RU.UTF-8 не сгенерирована, устраняет предупреждение setlocale).\n\n"
             "Можно выбрать из списка или ввести свою."
         )
         self.locale_label = QLabel("Локаль:")
         ssh_form.addRow(self.locale_label, self.locale_combo)
 
-        self.port_label = QLabel("Порт SSH:")
-        self.port_edit = QSpinBox()
-        self.port_edit.setRange(1, 65535)
-        self.port_edit.setValue(self.device.port or 22)
-        ssh_form.insertRow(0, self.port_label, self.port_edit)
+        # Исключение sudo: при логине не root права повышаются всегда, галочка
+        # нужна для учёток без прав sudo и команд от самого пользователя входа.
+        self.no_sudo_check = QCheckBox("Не повышать права через sudo")
+        self.no_sudo_check.setChecked(self.device.use_sudo is False)
+        self.no_sudo_check.setToolTip(
+            "При входе не под root команды выполняются через sudo, пароль берётся\n"
+            "из связки. Отметьте, если у учётной записи нет прав sudo или команды\n"
+            "должны работать от самого пользователя входа (его HOME, его файлы).\n"
+            "Вход под root галочка не меняет."
+        )
+        ssh_form.addRow(self.no_sudo_check)
 
-        remote_group = QGroupBox("Экран и пробуждение")
-        remote_form = QFormLayout(remote_group)
-        remote_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
-        remote_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        advanced_layout.addWidget(remote_group)
+        # Вкладка «Экран»: VNC-порт и источник миниатюр.
+        remote_form = self._make_tab(self.tabs, "Экран")
 
         # VNC-порт per-host override (0 = глобальный config vnc_port)
         self.vnc_port_label = QLabel("Порт VNC:")
@@ -177,7 +172,7 @@ class DeviceEditDialog(QDialog):
         self.vnc_port_edit.setSpecialValueText("Глобальный")
         self.vnc_port_edit.setValue(int(self.device.vnc_port or 0))
         self.vnc_port_edit.setToolTip(
-            "Порт VNC-сервера на этом хосте (x11vnc и krfb).\n"
+            "Порт VNC-сервера на этом хосте (kmsvnc, x11vnc и KRFB).\n"
             "«Глобальный» (0) - использовать порт из настроек VNC."
         )
         remote_form.addRow(self.vnc_port_label, self.vnc_port_edit)
@@ -188,7 +183,6 @@ class DeviceEditDialog(QDialog):
         self.thumbnail_backend_combo.addItem("VNC", "vnc")
         idx = self.thumbnail_backend_combo.findData(self.device.thumbnail_backend)
         self.thumbnail_backend_combo.setCurrentIndex(max(0, idx))
-        node_iid = getattr(self.device, "node_iid", None)
         self.thumbnail_backend_combo.setToolTip(
             "По умолчанию - настройка ноды-владельца. Изменения сохраняются на ноде."
             if node_iid and node_iid != "local"
@@ -197,17 +191,6 @@ class DeviceEditDialog(QDialog):
         remote_form.addRow("Источник миниатюр:", self.thumbnail_backend_combo)
         self._thumbnail_backends_supported = True
 
-        self.mac_label = QLabel("MAC-адрес:")
-        self.mac_edit = QLineEdit(self.device.mac_address or "")
-        self.mac_edit.setPlaceholderText("00:11:22:33:44:55")
-        self.mac_edit.setToolTip("MAC-адрес для включения хоста через Wake-on-LAN.")
-        remote_form.addRow(self.mac_label, self.mac_edit)
-        content_layout.addWidget(self._advanced)
-        self._advanced.hide()
-        self._advanced_toggle.toggled.connect(self._set_advanced_expanded)
-        self._scroll.setWidget(self._content)
-        layout.addWidget(self._scroll, 1)
-
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
         )
@@ -215,26 +198,8 @@ class DeviceEditDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
 
-        self.resize(340, 300)
-
-    def _set_advanced_expanded(self, expanded: bool) -> None:
-        """Показывает дополнительные поля и подбирает высоту в пределах экрана."""
-        self._advanced.setVisible(expanded)
-        self._advanced_toggle.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
-        self._content.layout().activate()
-        margins = self.layout().contentsMargins()
-        height = (
-            self._content.sizeHint().height()
-            + self.button_box.sizeHint().height()
-            + margins.top() + margins.bottom()
-            + self.layout().spacing()
-        )
-        screen = self.screen()
-        if screen is not None:
-            height = min(height, screen.availableGeometry().height() - 80)
-        self.resize(self.width(), height)
+        self.name_edit.setFocus()
+        self.resize(420, 260)
 
     def accept(self):
         """Валидация перед сохранением: вход не под root через sudo без пароля - предупреждение."""
@@ -242,7 +207,7 @@ class DeviceEditDialog(QDialog):
 
         use_sudo = False if self.no_sudo_check.isChecked() else None
         # Локаль: «По умолчанию» → None (наследовать), «(отключить)» → "" (явно
-        # отключить), иначе — введённая/выбранная строка.
+        # отключить), иначе - введённая/выбранная строка.
         loc_text = self.locale_combo.currentText().strip()
         if loc_text == self._LOCALE_DEFAULT:
             locale = None
@@ -297,6 +262,7 @@ class DeviceEditDialog(QDialog):
                 box.exec()
                 # Сохранение - только явной кнопкой, закрытие окна - возврат.
                 if box.clickedButton() is not keep:
+                    self.tabs.setCurrentWidget(self.ssh_tab)
                     self.bundle_selector.setFocus()
                     return
         super().accept()
@@ -426,7 +392,7 @@ class ConfigDialog(QDialog):
         from src.ui.widgets.bundle_selector import BundleSelector
 
         self.bundle_selector = BundleSelector(
-            allow_none=True, none_label="(нет связки)"
+            allow_none=True, none_label="(не выбраны)"
         )
         try:
             from src.di import get_container
@@ -461,14 +427,14 @@ class ConfigDialog(QDialog):
             "(LANG/LC_ALL/LC_CTYPE) для корректного вывода кириллицы.\n\n"
             "По умолчанию «ru_RU.UTF-8» (ROSA Linux).\n\n"
             "Оставьте поле пустым, если на хостах локаль ru_RU.UTF-8\n"
-            "не сгенерирована (нет в `locale -a`) — это устранит\n"
+            "не сгенерирована (нет в `locale -a`) - это устранит\n"
             "предупреждение:\n"
             "  bash: warning: setlocale: LC_ALL: cannot change locale (ru_RU.UTF-8)\n\n"
             "Перекрывается per-device в свойствах устройства."
         )
 
         # Add fields to SSH group
-        ssh_layout.addRow("Связка по умолчанию:", self.bundle_selector)
+        ssh_layout.addRow("Данные для входа по умолчанию:", self.bundle_selector)
         ssh_layout.addRow("Порт:", self.port)
         ssh_layout.addRow("Строгая проверка ключей:", self.strict_host_checking)
         ssh_layout.addRow("Таймаут команды:", self.command_timeout)

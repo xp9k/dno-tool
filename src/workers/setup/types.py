@@ -144,25 +144,26 @@ def validate_prepare(plan, bundles=None, default_iid=""):
     # только для каждого хоста, проверяет worker (check_prepare_logins).
     if not plan.after_bundle_iid and not (default_iid and default_iid in bundles):
         raise ValueError(
-            "«Связка после подготовки»: связка по умолчанию не задана. Задайте её "
-            "на шаге «Хосты» или отметьте «Другая» и выберите связку."
+            "«Данные для входа после подготовки»: данные для входа по умолчанию не "
+            "заданы. Задайте их на шаге «Хосты» или отметьте «Другая» и выберите "
+            "связку."
         )
     connect_login = None
     if plan.connect_bundle_iid:
         connect = bundles.get(plan.connect_bundle_iid)
         if connect is None:
-            raise ValueError("Выберите связку для входа при подготовке")
+            raise ValueError("Выберите данные для входа при подготовке")
         connect_login = connect[0]
     # Пароль не обязателен: вход может быть по ключу, sudo - без пароля
     # (NOPASSWD). Если sudo его спросит, установка сообщит об этом.
     after = bundles.get(plan.after_bundle_iid or default_iid)
     if after is None:
-        raise ValueError("Выберите связку после подготовки")
+        raise ValueError("Выберите данные для входа после подготовки")
     after_login = after[0] or "root"
     for account in plan.accounts:
         if account.login == after_login and not account.admin:
             raise ValueError(
-                f"Связка после подготовки входит под «{after_login}», но этой учётной "
+                f"После подготовки вход идёт под «{after_login}», но этой учётной "
                 "записи не выбраны права sudo: установка сервисов под ней невозможна"
             )
     if connect_login is not None:
@@ -174,7 +175,7 @@ def validate_prepare(plan, bundles=None, default_iid=""):
             )
         if plan.root_password and after[1] != plan.root_password:
             raise ValueError(
-                "Вход под root будет невозможен: пароль связки после подготовки "
+                "Вход под root будет невозможен: пароль в данных для входа после подготовки "
                 "не совпадает с новым паролем root, а ключ root не добавляется"
             )
 
@@ -191,16 +192,16 @@ def check_prepare_logins(plan, connect_login, after_login):
     каждого хоста (при наследовании у хостов могут быть разные связки).
     """
     if not connect_login:
-        raise ValueError("В связке для входа при подготовке не указан логин")
+        raise ValueError("В данных для входа при подготовке не указан логин")
     if not plan.revoke_admin:
         return
     if connect_login == "root":
         raise ValueError(
-            "Связка для подключения входит под root: отзывать права администратора не у кого"
+            "При подготовке вход идёт под root: отзывать права администратора не у кого"
         )
     if (after_login or "root") == connect_login:
         raise ValueError(
-            f"Связка после подготовки входит под «{connect_login}», у которой "
+            f"После подготовки вход идёт под «{connect_login}», у которой "
             "отзываются права администратора: остальные сервисы ставить будет нечем. "
             "Выберите другую связку или снимите галочку отзыва прав"
         )

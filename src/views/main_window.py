@@ -1028,7 +1028,7 @@ class MainWindow(QWidget):
         set_themed_icon(connection_menu.menuAction(), "menu_credentials")
 
         credentials_action = make_action(
-            "menu_credentials", "Связки учётных данных", self
+            "menu_credentials", "Данные для входа", self
         )
         credentials_action.triggered.connect(self.show_credentials_dialog)
         connection_menu.addAction(credentials_action)
@@ -1453,7 +1453,7 @@ class MainWindow(QWidget):
         except ImportError as e:
             logger.error(f"MainWindow: недоступен диалог связок учётных данных: {e}")
             QMessageBox.warning(
-                self, "Связки учётных данных", f"Модуль недоступен:\n{e}"
+                self, "Данные для входа", f"Модуль недоступен:\n{e}"
             )
             return
         dlg = CredentialsDialog(self)

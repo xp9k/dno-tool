@@ -125,7 +125,7 @@ class PrepareDevicesPage(SetupPage):
                 "открытые ключи для входа, разрешение входа root по SSH.\n"
                 "Подготовка выполняется на шаге «Установка» первой, под учётной "
                 "записью не root - всегда через sudo: ей нужны права root. Остальные "
-                "сервисы хоста ставятся уже под связкой после подготовки; "
+                "сервисы хоста ставятся уже с данными для входа после подготовки; "
                 "если подготовка не удалась, хост пропускается."
             )
         )
@@ -149,10 +149,10 @@ class PrepareDevicesPage(SetupPage):
             "Заводская учётная запись с правами sudo (например, teacher): под ней "
             "выполняется подготовка, не под root - всегда через sudo. Пароль связки "
             "используется для входа и для sudo.\n"
-            "«Связка хоста» - связка из колонки «Связка» шага «Хосты», у хоста без "
-            "своей связки - связка по умолчанию."
+            "«Как у хоста» - связка из колонки «Данные для входа» шага «Хосты», у "
+            "хоста без своей связки - связка по умолчанию."
         )
-        bundles_form.addRow("Связка для подключения:", self._connect_selector)
+        bundles_form.addRow("Данные для входа при подготовке:", self._connect_selector)
         # Связка «после»: обычно это связка по умолчанию шага «Хосты» (видна
         # строкой); своя выбирается только с галочкой «Другая».
         after_row = QWidget(bundles_box)
@@ -167,7 +167,8 @@ class PrepareDevicesPage(SetupPage):
         self._after_selector = BundleSelector(after_row, allow_none=False)
         self._after_selector.setToolTip(
             "Под ней проверяется вход и ставятся остальные сервисы; при «Готово» она "
-            "записывается подготовленным хостам в колонку «Связка» - только тем, где "
+            "записывается подготовленным хостам в колонку «Данные для входа» - только "
+            "тем, где "
             "подготовка и проверочный вход прошли.\n"
             "Если такой учётной записи нет на хосте, нажмите «Добавить» под таблицей "
             "учётных записей: строка добавится с логином и паролем этой связки."
@@ -176,13 +177,13 @@ class PrepareDevicesPage(SetupPage):
         after_layout.addWidget(self._after_selector, 1)
         self._after_other = QCheckBox("Другая", after_row)
         self._after_other.setToolTip(
-            "Выбрать связку после подготовки, отличную от связки по умолчанию"
+            "Выбрать для входа после подготовки связку, отличную от связки по умолчанию"
         )
         after_layout.addWidget(self._after_other)
-        bundles_form.addRow("Связка после подготовки:", after_row)
+        bundles_form.addRow("Данные для входа после подготовки:", after_row)
         # Под выбранной связкой «после»; видна только с галочкой «Другая».
         self._after_default = QCheckBox(
-            "Использовать эту связку в дальнейшем по умолчанию", bundles_box
+            "Использовать эти данные в дальнейшем по умолчанию", bundles_box
         )
         self._after_default.setToolTip(
             "При «Готово» эта связка станет связкой по умолчанию программы, "
@@ -528,9 +529,9 @@ class PrepareDevicesPage(SetupPage):
         if ctx is not None and ctx.credentials is not None:
             for login, role in (
                 (self._bundle_login(ctx, self._connect_selector.current_iid()),
-                 "связка для подключения"),
+                 "вход при подготовке"),
                 (self._bundle_login(ctx, self._after_iid()),
-                 "связка после подготовки"),
+                 "вход после подготовки"),
             ):
                 if login:
                     roles.setdefault(login, []).append(role)
@@ -616,7 +617,7 @@ class PrepareDevicesPage(SetupPage):
     def _update_revoke_label(self, login: str) -> None:
         self._revoke_check.setText(
             "Отозвать права администратора у учётной записи подключения"
-            + (f" ({login})" if login else " (из связки для подключения каждого хоста)")
+            + (f" ({login})" if login else " (из данных для входа каждого хоста)")
         )
 
     @staticmethod
@@ -633,11 +634,11 @@ class PrepareDevicesPage(SetupPage):
     def _update_inherit_labels(self, ctx) -> None:
         """В пунктах наследования видно, какая связка глобальная."""
         name = self._global_name(ctx)
-        self._connect_selector.set_none_label(f"(связка хоста, иначе глобальная: {name})")
+        self._connect_selector.set_none_label(f"(как у хоста, иначе по умолчанию: {name})")
         self._after_default_label.setText(
-            f"связка по умолчанию «{name}»"
+            f"по умолчанию: «{name}»"
             if self._global_bundle_iid(ctx)
-            else "связка по умолчанию не задана"
+            else "по умолчанию не заданы"
         )
 
     @staticmethod
@@ -751,8 +752,8 @@ class PrepareDevicesPage(SetupPage):
             missing = self._hosts_without_bundle(ctx)
             if missing:
                 warnings.append(
-                    "Связка для подключения берётся у хоста, а связка по "
-                    f"умолчанию не задана: {missing} хост(ов) без своей связки "
+                    "Данные для входа при подготовке берутся у хоста, а данные для входа по "
+                    f"умолчанию не заданы: {missing} хост(ов) без своей связки "
                     "будут пропущены."
                 )
         after = bundles[ctx.prepare.after_bundle_iid or default_iid]
@@ -763,7 +764,7 @@ class PrepareDevicesPage(SetupPage):
             who = self._connect_login(ctx) or "учётной записи входа"
             warnings.append(
                 f"Права администратора у «{who}» отзываются, а "
-                f"связка после подготовки входит под «{after_login}»: её нет среди "
+                f"после подготовки вход идёт под «{after_login}»: её нет среди "
                 "учётных записей с флажком sudo. Если у неё на хостах нет прав sudo, "
                 "остальные сервисы не установятся."
             )
@@ -772,7 +773,7 @@ class PrepareDevicesPage(SetupPage):
             # если на хостах он без пароля (NOPASSWD).
             if not (ctx.prepare.keys and after_login in ctx.prepare.key_users):
                 warnings.append(
-                    f"В связке после подготовки («{after_login}») нет пароля: вход "
+                    f"В данных для входа после подготовки («{after_login}») нет пароля: вход "
                     f"возможен только по ключу. Отметьте «{after_login}» в списке "
                     "учётных записей для ключей, если ключа на хостах ещё нет."
                 )
@@ -786,7 +787,7 @@ class PrepareDevicesPage(SetupPage):
                 )
         if after_login == "root" and not ctx.prepare.permit_root:
             warnings.append(
-                "Связка после подготовки входит под root, а вход root по SSH на "
+                "После подготовки вход идёт под root, а вход root по SSH на "
                 "этом шаге не разрешается: если на хостах root указан в "
                 "/etc/ssh/denyusers или PermitRootLogin запрещает его, проверочный "
                 "вход не пройдёт и хосты будут пропущены."
@@ -806,18 +807,18 @@ class PrepareDevicesPage(SetupPage):
         ) or "нет"
         permit = dict(PERMIT_CHOICES).get(plan.permit_root, "не меняется")
         connect = (
-            names.get(plan.connect_bundle_iid, "—")
+            names.get(plan.connect_bundle_iid, "-")
             if plan.connect_bundle_iid
-            else "связка хоста, иначе глобальная: " + global_name
+            else "как у хоста, иначе по умолчанию: " + global_name
         )
         after = (
             names.get(plan.after_bundle_iid, "-")
             if plan.after_bundle_iid
-            else "связка по умолчанию: " + global_name
+            else "по умолчанию: " + global_name
         )
         who = self._connect_login(ctx) or "учётной записи входа"
         text = (
-            f"связка для подключения «{escape(connect)}»; "
+            f"данные для входа при подготовке: «{escape(connect)}»; "
             f"учётные записи: {accounts}; "
             f"пароль root: {'меняется' if plan.root_password else 'не меняется'}; "
             + (
@@ -828,8 +829,8 @@ class PrepareDevicesPage(SetupPage):
             + f"вход root по SSH: {permit}; "
             + (f"права администратора у «{escape(who)}» отзываются; "
                if plan.revoke_admin else "")
-            + f"связка после подготовки: «{escape(after)}»"
-            + (", при «Готово» станет связкой по умолчанию"
+            + f"данные для входа после подготовки: «{escape(after)}»"
+            + (", при «Готово» станут данными для входа по умолчанию"
                if plan.after_as_default else "")
         )
         prepared = len(ctx.install_result.bundle_assignments)

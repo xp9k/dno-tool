@@ -1043,7 +1043,7 @@ class CustomTreeItemModel(QStandardItemModel):
         root = self.invisibleRootItem()
         self._load_group_items(root, data)
         if self.show_columns:
-            self.setHorizontalHeaderLabels(["Имя", "Адрес", "Связка", "Sudo", "MAC"])
+            self.setHorizontalHeaderLabels(["Имя", "Адрес", "Данные для входа", "Sudo", "MAC"])
         else:
             self.setHorizontalHeaderLabels(["Списки"])
 
@@ -1683,7 +1683,7 @@ class DeviceTreeView(QTreeView):
         if self.show_columns:
             self.setHeaderHidden(False)
             self._model.setHorizontalHeaderLabels(
-                ["Имя", "Адрес", "Связка", "Sudo", "MAC"]
+                ["Имя", "Адрес", "Данные для входа", "Sudo", "MAC"]
             )
             header = self.header()
             from PySide6.QtWidgets import QHeaderView

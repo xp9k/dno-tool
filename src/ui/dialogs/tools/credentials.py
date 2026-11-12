@@ -35,7 +35,7 @@ class CredentialsDialog(QDialog):
         """``service`` — другое хранилище связок (например, связки камер)."""
         super().__init__(parent)
         self.setSizeGripEnabled(True)
-        self.setWindowTitle(getattr(service, "title", "Связки учётных данных"))
+        self.setWindowTitle(getattr(service, "title", "Данные для входа"))
         self.setMinimumWidth(560)
         self.setMinimumHeight(320)
         self._svc = service
@@ -212,6 +212,6 @@ class CredentialsDialog(QDialog):
         if getattr(getattr(self._svc, "_config", None), "wizard_draft", False):
             message = "Связки добавлены в черновик мастера. Они запишутся после «Готово»."
         else:
-            message = getattr(self._svc, "saved_message", "Связки учётных данных сохранены.")
+            message = getattr(self._svc, "saved_message", "Данные для входа сохранены.")
         QMessageBox.information(self, "Сохранение", message)
         return True
