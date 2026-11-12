@@ -11,6 +11,11 @@ from ...config import (
 )
 
 
+def normalize_use_sudo(value: Any) -> bool | None:
+    """Исключение sudo хоста: False - без sudo, остальное - None (как у всех)."""
+    return False if value is False else None
+
+
 class DeviceModel(object):
     def __init__(self, data: dict | None = None) -> None:
         # iid: приоритет — из data (сохраняет связь с DataStore), иначе генерируем новый
@@ -38,10 +43,10 @@ class DeviceModel(object):
         self.thumbnail_backend: str | None = normalize_thumbnail_backend(
             data.get("thumbnail_backend") if data else None, allow_none=True
         )
-        # Флаг sudo: None = наследовать SSHConfig.use_sudo, True/False = per-device override.
-        # Когда включено и SSH-логин не root, SSHWorker подаёт пароль sudo через PTY-expect
-        # для команд, содержащих `sudo`. См. src/workers/command/sudo_utils.py
-        self.use_sudo = data.get("use_sudo", None) if data else None
+        # Исключение sudo: None = sudo при логине не root (как у всех), False = хост
+        # не повышает права. True из старых файлов значит то же, что None.
+        # См. src/workers/command/sudo_utils.py
+        self.use_sudo = normalize_use_sudo(data.get("use_sudo") if data else None)
         # Локаль: None = наследовать SSHConfig.locale, строка (в т.ч. пустая) = per-device
         # override. Пустая строка = явно отключить экспорт локали для этого хоста.
         # См. src/workers/command/locale_utils.py
@@ -108,7 +113,7 @@ class DeviceModel(object):
             self.mac_address = data.get("mac_address", self.mac_address)
             self.vnc_port = data.get("vnc_port", self.vnc_port)
             self.thumbnail_backend = thumbnail_backend
-            self.use_sudo = data.get("use_sudo", self.use_sudo)
+            self.use_sudo = normalize_use_sudo(data.get("use_sudo", self.use_sudo))
             self.locale = data.get("locale", self.locale)
             return
 
@@ -133,7 +138,7 @@ class DeviceModel(object):
         self.mac_address = getattr(data, "mac_address", self.mac_address)
         self.vnc_port = getattr(data, "vnc_port", self.vnc_port)
         self.thumbnail_backend = thumbnail_backend
-        self.use_sudo = getattr(data, "use_sudo", self.use_sudo)
+        self.use_sudo = normalize_use_sudo(getattr(data, "use_sudo", self.use_sudo))
         self.locale = getattr(data, "locale", self.locale)
 
     @property

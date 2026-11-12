@@ -121,7 +121,6 @@ class SetupWizardDialog(QDialog):
 
         # Связка по умолчанию задаётся на шаге «Хосты», читается остальными.
         self.ctx.default_bundle_iid = self.ctx.credentials.default_bundle_iid or ""
-        self.ctx.use_sudo = bool(self.ctx.baseline["app"].ssh.use_sudo)
         self._build_pages()
         # collect шага «Хосты» пишет связку по умолчанию и тогда, когда шаг
         # не открывали: список должен сразу показывать текущее значение.

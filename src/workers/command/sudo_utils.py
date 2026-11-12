@@ -1,5 +1,8 @@
 """Утилиты sudo: определение необходимости и PTY-expect для пароля.
 
+sudo используется при любом логине, кроме root; хост может отказаться от него
+(``DeviceModel.use_sudo = False``).
+
 Механизм: при ``should_use_sudo(device) == True`` и наличии ``sudo`` в тексте команды,
 SSHWorker включает PTY-expect — перехватывает prompt sudo в выводе и автоматически
 отправляет пароль через ``channel.send()``. ``sudo`` читает пароль из ``/dev/tty``
@@ -59,20 +62,32 @@ def is_sudo_password_prompt(buffer: str) -> bool:
     return bool(_SUDO_PROMPT_RE.search(buffer[-512:]))
 
 
-def should_use_sudo(device: "DeviceModel | None") -> bool:
-    """Определяет, нужно ли использовать sudo для устройства.
+def should_use_sudo(
+    device: "DeviceModel | None", username: str | None = None
+) -> bool:
+    """Определяет, нужно ли повышать права через sudo для устройства.
 
-    Приоритет:
-    1. ``device.use_sudo`` (если не None — явный per-device override)
-    2. ``config.app.ssh.use_sudo`` (глобальный дефолт)
+    sudo используется всегда, когда логин входа не root. Исключение задаётся
+    у хоста: ``device.use_sudo is False`` (учётка без прав sudo или команды,
+    которым нужны HOME и права самого пользователя входа). Общей настройки нет.
+
+    Args:
+        device: Устройство.
+        username: Логин входа, если вызывающий его уже знает; иначе берётся
+            из связки устройства (``get_credentials(..., use_key=False)``).
     """
     if device is None:
         return False
-    if device.use_sudo is not None:
-        return bool(device.use_sudo)
-    from src.config import config
+    if getattr(device, "use_sudo", None) is False:
+        return False
+    if username is None:
+        try:
+            from .executor_base import get_credentials
 
-    return bool(config.app.ssh.use_sudo)
+            username = get_credentials(device, use_key=False).username
+        except Exception:  # noqa: BLE001 - без связки решает вызывающий по логину
+            username = None
+    return username != "root"
 
 
 def ensure_sudo_prefix(
@@ -92,9 +107,7 @@ def ensure_sudo_prefix(
     Returns:
         Скрипт в повышенной оболочке либо исходный текст для root/без sudo.
     """
-    if not should_use_sudo(device):
-        return command_text
-    if username == "root":
+    if username == "root" or not should_use_sudo(device, username):
         return command_text
     for line in command_text.splitlines(keepends=True):
         effective = line.lstrip()

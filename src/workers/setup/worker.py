@@ -72,7 +72,6 @@ class RemoteServiceInstallerWorker(BaseWorker):
         veyon_server_port: int = 11100,
         vnc_server: str = "kmsvnc",  # DEFAULT_VNC_SERVER
         extra_packages: List[str] = None,
-        use_sudo_override: Optional[bool] = None,
         default_bundle_iid: Optional[str] = None,
         ssh_private_key_path: str = "",
         credential_bundles=None,
@@ -112,9 +111,7 @@ class RemoteServiceInstallerWorker(BaseWorker):
         # шаге "vnc". Пароль ОДИН на все бекенды (self.vnc_password).
         self.vnc_server = vnc_server
         self.extra_packages = list(extra_packages) if extra_packages else []
-        # Связка по умолчанию из мастера (могла не быть сохранена в config) +
-        # override флага sudo из мастера.
-        self.use_sudo_override = use_sudo_override
+        # Связка по умолчанию из мастера (могла не быть сохранена в config).
         # None = наследовать конфиг, "" = явно без общей связки.
         self.default_bundle_iid = default_bundle_iid
         self.ssh_private_key_path = ssh_private_key_path
@@ -363,21 +360,15 @@ class RemoteServiceInstallerWorker(BaseWorker):
         return base
 
     def _resolve_use_sudo(self, device: DeviceModel) -> bool:
-        """use_sudo: хост → общее значение мастера → конфиг."""
-        from src.workers.command.sudo_utils import should_use_sudo
+        """sudo при входе не под root (root отсекает вызывающий по логину).
 
-        # С подготовкой вход не под root для подготовки всегда идёт через
-        # sudo (заводская учётка - администратор); для остальных сервисов
-        # решает галочка «Использовать sudo» связки «после».
-        if self.prepare is not None:
-            if self._stage(device) == "after":
-                return bool(self.prepare.after_use_sudo)
+        Исключение хоста (``use_sudo=False``) соблюдается везде, кроме стадии
+        подготовки: заводская учётка входа - администратор, без sudo
+        подготовка невозможна.
+        """
+        if self.prepare is not None and self._stage(device) != "after":
             return True
-        if getattr(device, "use_sudo", None) is not None:
-            return bool(device.use_sudo)
-        if self.use_sudo_override is not None:
-            return bool(self.use_sudo_override)
-        return should_use_sudo(device)
+        return getattr(device, "use_sudo", None) is not False
 
     @staticmethod
     def _shell_escape(s: str) -> str:
@@ -521,7 +512,7 @@ class RemoteServiceInstallerWorker(BaseWorker):
                 self.host_log.emit(
                     device.host,
                     log_service,
-                    f"sudo выключен (логин: {creds.username})",
+                    f"sudo выключен у хоста (логин: {creds.username})",
                 )
 
         ssh = None

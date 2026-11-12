@@ -42,8 +42,8 @@ class PreparePlan:
     permit_root: "" - не менять sshd_config, иначе значение PermitRootLogin.
     revoke_admin - исключить учётную запись входа для подготовки из групп
     wheel и sudo (последним шагом подготовки).
-    after_use_sudo - остальные сервисы под связкой «после» (не root) идут
-    через sudo. Подготовка под учётной записью не root - всегда через sudo.
+    sudo отдельно не задаётся: вход не под root (и при подготовке, и под
+    связкой «после») всегда идёт через sudo.
     after_as_default - при сохранении мастера связка «после» становится
     связкой по умолчанию, подготовленные хосты её наследуют; worker его не
     читает (подключение во время установки не меняется).
@@ -57,7 +57,6 @@ class PreparePlan:
     permit_root: str = ""
     after_bundle_iid: str = ""
     revoke_admin: bool = False
-    after_use_sudo: bool = True
     after_as_default: bool = False
 
     def __post_init__(self):
@@ -135,8 +134,6 @@ def validate_prepare(plan, bundles=None, default_iid=""):
         raise ValueError("Неизвестный режим входа root")
     if type(plan.revoke_admin) is not bool:
         raise ValueError("Некорректный признак отзыва прав")
-    if type(plan.after_use_sudo) is not bool:
-        raise ValueError("Некорректный признак sudo после подготовки")
     if type(plan.after_as_default) is not bool:
         raise ValueError("Некорректный признак связки по умолчанию")
     if plan.after_as_default and not plan.after_bundle_iid:
@@ -163,7 +160,7 @@ def validate_prepare(plan, bundles=None, default_iid=""):
         raise ValueError("Выберите связку после подготовки")
     after_login = after[0] or "root"
     for account in plan.accounts:
-        if plan.after_use_sudo and account.login == after_login and not account.admin:
+        if account.login == after_login and not account.admin:
             raise ValueError(
                 f"Связка после подготовки входит под «{after_login}», но этой учётной "
                 "записи не выбраны права sudo: установка сервисов под ней невозможна"

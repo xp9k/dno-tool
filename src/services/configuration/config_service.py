@@ -71,10 +71,9 @@ class ConfigService(BaseService):
                         raise RuntimeError("Настройки подключения изменились. Откройте мастер заново.")
                 next_app = deepcopy(current)
                 next_app.credentials = deepcopy(ctx.credentials)
-                # Связка и sudo по умолчанию задаются на шаге «Хосты» (он есть
-                # всегда); шаг «Подготовка» может заменить их связкой «после».
+                # Связка по умолчанию задаётся на шаге «Хосты» (он есть
+                # всегда); шаг «Подготовка» может заменить её связкой «после».
                 next_app.credentials.default_bundle_iid = ctx.default_bundle_iid or None
-                next_app.ssh.use_sudo = bool(ctx.use_sudo)
                 hosts_data = ctx.hosts_data
                 assignments = dict(ctx.install_result.bundle_assignments)
                 prepare = getattr(getattr(ctx, "install_plan", None), "prepare", None)
@@ -90,15 +89,9 @@ class ConfigService(BaseService):
                     and prepare.after_bundle_iid
                 ):
                     new_default = prepare.after_bundle_iid
-                    login = next(
-                        (b.login for b in next_app.credentials.bundles if b.iid == new_default),
-                        None,
-                    )
-                    if login is None:
+                    if not any(b.iid == new_default for b in next_app.credentials.bundles):
                         raise ValueError("Связка после подготовки не найдена")
                     next_app.credentials.default_bundle_iid = new_default
-                    if (login or "root") != "root":
-                        next_app.ssh.use_sudo = bool(prepare.after_use_sudo)
                     assignments = {
                         iid: ("" if bundle_iid == new_default else bundle_iid)
                         for iid, bundle_iid in assignments.items()
@@ -106,19 +99,11 @@ class ConfigService(BaseService):
                 if assignments:
                     from src.services.configuration.setup_draft import apply_host_bundles
 
-                    logins = {b.iid: b.login for b in next_app.credentials.bundles}
                     # Пустая связка - наследовать глобальную (по умолчанию).
-                    logins[""] = logins.get(next_app.credentials.default_bundle_iid)
-                    if set(assignments.values()) - set(logins):
+                    known = {b.iid for b in next_app.credentials.bundles} | {""}
+                    if set(assignments.values()) - known:
                         raise ValueError("Связка для подготовленных хостов не найдена")
-                    # Вход не под root на подготовленном хосте: sudo - как при
-                    # установке (галочка «Использовать sudo» связки «после»).
-                    after_sudo = bool(getattr(prepare, "after_use_sudo", True))
-                    use_sudo = {
-                        iid: (after_sudo if (logins[iid] or "root") != "root" else None)
-                        for iid in set(assignments.values())
-                    }
-                    hosts_data = apply_host_bundles(hosts_data, assignments, use_sudo)
+                    hosts_data = apply_host_bundles(hosts_data, assignments)
                 if ctx.services.get("veyon"):
                     allowed = {"key_name", "webapi_url", "feature_transport", "webapi_connection_limit", "server_port"}
                     if set(ctx.veyon.settings) - allowed:

@@ -216,7 +216,7 @@ class DesktopContext:
         """Запустить служебный канал, разрешая sudo только по настройкам хоста."""
         creds = get_credentials(device, use_key=False)
         prompt = ""
-        if should_use_sudo(device) and creds.username != "root":
+        if should_use_sudo(device, creds.username):
             prompt = "__DNO_DESKTOP_SUDO_" + uuid.uuid4().hex + ":"
             command = "sudo -p " + shlex.quote(prompt) + " -- " + command
         channel.exec_command("stty -echo && exec " + command)

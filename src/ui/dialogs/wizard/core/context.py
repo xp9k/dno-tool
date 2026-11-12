@@ -75,7 +75,6 @@ class InstallPlan:
     veyon_server_port: int = 11100
     vnc_server: str = DEFAULT_VNC_SERVER
     extra_packages: tuple = ()
-    use_sudo_override: bool | None = None
     default_bundle_iid: str | None = None
     ssh_private_key_path: str = ""
     ssh_settings: tuple = ()
@@ -135,8 +134,6 @@ class WizardContext:
     credentials: object = field(default=None, repr=False)
     # Связка по умолчанию (глобальная): задаётся на шаге «Хосты».
     default_bundle_iid: str = ""
-    # Общая настройка sudo (ssh.use_sudo): тоже на шаге «Хосты».
-    use_sudo: bool = False
     applied_actions: list = field(default_factory=list)
     commands_loaded: bool = False
     ssh: SshState = field(default_factory=SshState)

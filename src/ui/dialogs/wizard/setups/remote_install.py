@@ -101,10 +101,9 @@ class RemoteInstallPage(SetupPage):
             "на локальных шагах и только деплоятся на хосты. Статус обновляется "
             "в таблице по мере выполнения; подробности выбранного хоста - под "
             "таблицей, двойной клик по строке - полный журнал хоста.\n"
-            "Вход - по связке хоста (шаг «Хосты»). Для входа не под root sudo "
-            "включается колонкой «Sudo» хоста или галочкой на шаге «Хосты», "
-            "пароль sudo - из связки; с подготовкой вход не под root всегда идёт "
-            "через sudo."
+            "Вход - по связке хоста (шаг «Хосты»). Вход не под root идёт через "
+            "sudo с паролем из связки, кроме хостов со значением «Нет» в колонке "
+            "«Sudo» (подготовка не под root идёт через sudo всегда)."
         )
         layout.addWidget(hint)
 
@@ -529,7 +528,6 @@ class RemoteInstallPage(SetupPage):
             veyon_server_port=ctx.veyon.settings.get("server_port", 11100),
             vnc_server=ctx.vnc_server,
             extra_packages=ctx.packages,
-            use_sudo_override=ctx.use_sudo,
             ssh_settings=tuple(asdict(ctx.baseline["app"].ssh).items()),
             default_bundle_iid=ctx.default_bundle_iid,
             credential_bundles=tuple(
@@ -625,7 +623,6 @@ class RemoteInstallPage(SetupPage):
             veyon_server_port=plan.veyon_server_port,
             vnc_server=plan.vnc_server,
             extra_packages=list(plan.extra_packages),
-            use_sudo_override=plan.use_sudo_override,
             default_bundle_iid=plan.default_bundle_iid,
             ssh_private_key_path=plan.ssh_private_key_path,
             credential_bundles=plan.credential_bundles,

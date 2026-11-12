@@ -686,7 +686,7 @@ def overlay(binding):
 
 def require_root():
     if os.geteuid() != 0:
-        raise LockError("Нужны права root: включите sudo для хоста или войдите как root")
+        raise LockError("Нужны права root: войдите как root или снимите у хоста «Не повышать права через sudo»")
 
 
 def unit_state(unit):

@@ -124,7 +124,7 @@ class ShellSession:
                     f"export LANG={loc}; export LC_ALL={loc}; export LC_CTYPE={loc}; "
                 )
             ready = f"printf '%s:%s\\n' '{marker}' 0; "
-            if should_use_sudo(device) and creds.username != "root":
+            if should_use_sudo(device, creds.username):
                 prompt = f"__DNO_SUDO_{uuid.uuid4().hex}__:"
                 # Adjacent quoted fragments produce the prompt only at runtime.
                 # Even a fragmented PTY echo can never contain its full token.

@@ -109,22 +109,17 @@ class DeviceEditDialog(QDialog):
         ssh_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         advanced_layout.addWidget(ssh_group)
 
-        self.sudo_label = QLabel("Использовать sudo:")
-        self.sudo_combo = QComboBox()
-        self.sudo_combo.addItem("По умолчанию (наследовать)")
-        self.sudo_combo.addItem("Да")
-        self.sudo_combo.addItem("Нет")
-        # device.use_sudo: None → 0, True → 1, False → 2
-        idx = 0 if self.device.use_sudo is None else (1 if self.device.use_sudo else 2)
-        self.sudo_combo.setCurrentIndex(idx)
-        self.sudo_combo.setToolTip(
-            "Выполнять весь обычный SSH-скрипт с правами root через sudo и Bash.\n"
-            "Команды рабочего стола выполняются от пользователя сеанса.\n"
-            "По умолчанию — наследует глобальную настройку SSH.\n"
-            "Да/Нет — явный per-device override.\n\n"
-            "Пароль берётся из выбранной связки учётных данных."
+        # Исключение sudo: при логине не root права повышаются всегда, галочка
+        # нужна для учёток без прав sudo и команд от самого пользователя входа.
+        self.no_sudo_check = QCheckBox("Не повышать права через sudo")
+        self.no_sudo_check.setChecked(self.device.use_sudo is False)
+        self.no_sudo_check.setToolTip(
+            "При входе не под root команды выполняются через sudo, пароль берётся\n"
+            "из связки. Отметьте, если у учётной записи нет прав sudo или команды\n"
+            "должны работать от самого пользователя входа (его HOME, его файлы).\n"
+            "Вход под root галочка не меняет."
         )
-        ssh_form.addRow(self.sudo_label, self.sudo_combo)
+        ssh_form.addRow(self.no_sudo_check)
 
         # Локаль: editable QComboBox с пунктами «По умолчанию (наследовать)»,
         # «(отключить)» и стандартными локалями. None = наследовать SSHConfig.locale;
@@ -242,11 +237,10 @@ class DeviceEditDialog(QDialog):
         self.resize(self.width(), height)
 
     def accept(self):
-        """Валидация перед сохранением: если sudo включено, но пароль не указан — предупреждение."""
+        """Валидация перед сохранением: вход не под root через sudo без пароля - предупреждение."""
         from src.workers.command.sudo_utils import should_use_sudo
 
-        sudo_idx = self.sudo_combo.currentIndex()
-        use_sudo = {0: None, 1: True, 2: False}[sudo_idx]
+        use_sudo = False if self.no_sudo_check.isChecked() else None
         # Локаль: «По умолчанию» → None (наследовать), «(отключить)» → "" (явно
         # отключить), иначе — введённая/выбранная строка.
         loc_text = self.locale_combo.currentText().strip()
@@ -271,50 +265,38 @@ class DeviceEditDialog(QDialog):
             }
         )
         node_iid = getattr(self.device, "node_iid", None)
-        if not (node_iid and node_iid != "local") and should_use_sudo(tmp):
-            # Проверяем пароль: связка хоста, затем глобальная связка по умолчанию
-            has_pwd = False
-            bundle_iid = self.bundle_selector.current_iid()
-            if bundle_iid:
-                try:
-                    from src.di import get_container
-                    from src.services.configuration.credential_service import CredentialService
+        if not (node_iid and node_iid != "local"):
+            # Логин и пароль - той связкой, под которой хост будет входить (своя
+            # связка, иначе по умолчанию). Связки берутся там же, где их берёт
+            # список окна: в мастере это черновик, а не рабочие настройки.
+            login, password = None, None
+            try:
+                from src.ui.widgets.bundle_selector import credential_service_for
 
-                    svc = get_container().resolve_optional(CredentialService)
-                    if svc is not None:
-                        b = svc.get_bundle_by_iid(bundle_iid)
-                        if b is not None:
-                            has_pwd = bool(b.password)
-                except Exception:
-                    pass
-            if not has_pwd:
-                # Проверяем глобальную связку по умолчанию
-                try:
-                    from src.di import get_container
-                    from src.services.configuration.credential_service import CredentialService
-
-                    svc = get_container().resolve_optional(CredentialService)
-                    if svc is not None:
-                        b = svc.get_default_bundle()
-                        if b is not None:
-                            has_pwd = bool(b.password)
-                except Exception:
-                    pass
-            if not has_pwd:
-                btn = QMessageBox.warning(
-                    self,
+                svc = credential_service_for(self)
+                if svc is not None:
+                    login, password = svc.resolve(tmp)
+            except Exception:  # noqa: BLE001 - без связок проверять нечего
+                pass
+            login = (login or "").strip() or "root"
+            if should_use_sudo(tmp, login) and not password:
+                box = QMessageBox(
+                    QMessageBox.Icon.Warning,
                     "Пароль для sudo",
-                    "Включено использование sudo, но пароль не указан ни в связке, "
-                    "ни в глобальной связке по умолчанию.\n\n"
-                    "Команды с sudo потребуют пароль на хосте. Без пароля "
-                    "они не смогут выполниться.\n\n"
-                    "• «Указать связку» — вернуться в диалог.\n"
-                    "• «Сохранить как есть» — если на хосте sudo без пароля "
-                    "или пароль укажете позже.",
-                    QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
-                    QMessageBox.StandardButton.Cancel,
+                    f"Хост входит под «{login}», команды выполняются через sudo, "
+                    "но в связке нет пароля.\n\n"
+                    "Без пароля sudo работает, только если на хосте он настроен "
+                    "без пароля (NOPASSWD). Иначе выберите связку с паролем или "
+                    "отметьте «Не повышать права через sudo».",
+                    parent=self,
                 )
-                if btn != QMessageBox.StandardButton.Save:
+                back = box.addButton("Указать связку", QMessageBox.ButtonRole.RejectRole)
+                keep = box.addButton("Сохранить как есть", QMessageBox.ButtonRole.AcceptRole)
+                box.setDefaultButton(back)
+                box.setEscapeButton(back)
+                box.exec()
+                # Сохранение - только явной кнопкой, закрытие окна - возврат.
+                if box.clickedButton() is not keep:
                     self.bundle_selector.setFocus()
                     return
         super().accept()
@@ -348,9 +330,7 @@ class DeviceEditDialog(QDialog):
                 if self.port_edit.value() != config.app.ssh.port
                 else None,
                 "mac_address": self.mac_edit.text() if self.mac_edit.text() else None,
-                "use_sudo": {0: None, 1: True, 2: False}[
-                    self.sudo_combo.currentIndex()
-                ],
+                "use_sudo": False if self.no_sudo_check.isChecked() else None,
                 "vnc_port": self.vnc_port_edit.value() or None,
                 "thumbnail_backend": self.thumbnail_backend_combo.currentData(),
                 "locale": (
@@ -442,19 +422,6 @@ class ConfigDialog(QDialog):
         self.connect_timeout.setValue(config.app.ssh.connect_timeout)
         self.connect_timeout.setSuffix(" сек")
 
-        self.use_sudo = QCheckBox("Использовать sudo для non-root логина")
-        self.use_sudo.setChecked(config.app.ssh.use_sudo)
-        self.use_sudo.setToolTip(
-            "При non-root логине выполнять весь обычный SSH-скрипт с правами root.\n"
-            "Требуется разрешение sudo на Bash. Команды рабочего стола\n"
-            "выполняются от пользователя сеанса.\n\n"
-            "Поддерживаются любые команды: однострочные, многострочные, пайпы,\n"
-            "heredoc, sudo -u, sudo bash -c.\n\n"
-            "Пароль берётся из связки учётных данных (device или глобальной).\n"
-            "Одна попытка пароля; повторный запрос завершает задачу ошибкой.\n"
-            "Перекрывается per-device в свойствах устройства."
-        )
-
         # Связка учётных данных по умолчанию (глобальная).
         from src.ui.widgets.bundle_selector import BundleSelector
 
@@ -506,7 +473,6 @@ class ConfigDialog(QDialog):
         ssh_layout.addRow("Строгая проверка ключей:", self.strict_host_checking)
         ssh_layout.addRow("Таймаут команды:", self.command_timeout)
         ssh_layout.addRow("Таймаут подключения:", self.connect_timeout)
-        ssh_layout.addRow(self.use_sudo)
         ssh_layout.addRow("Локаль:", self.locale_combo)
 
         # Вкладка «Общие»: потоки и проверка доступности.
@@ -883,46 +849,9 @@ class ConfigDialog(QDialog):
         config.app.ssh.strict_host_checking = self.strict_host_checking.isChecked()
         config.app.ssh.command_timeout = self.command_timeout.value()
         config.app.ssh.connect_timeout = self.connect_timeout.value()
-        config.app.ssh.use_sudo = self.use_sudo.isChecked()
         config.app.ssh.locale = self.locale_combo.currentText().strip()
         config.app.network.thread_count = thread_count_new
         config.app.execution.thread_count = command_thread_count_new
-
-        # Валидация: sudo без пароля — предупреждение (пароль опционален,
-        # если у хостов есть per-device связки или на хостах sudo без пароля).
-        if config.app.ssh.use_sudo:
-            # Проверяем, есть ли пароль в выбранной связке по умолчанию
-            default_iid = self.bundle_selector.current_iid()
-            has_default_pwd = False
-            if default_iid:
-                try:
-                    from src.di import get_container
-                    from src.services.configuration.credential_service import CredentialService
-
-                    svc = get_container().resolve_optional(CredentialService)
-                    if svc is not None:
-                        b = svc.get_bundle_by_iid(default_iid)
-                        if b is not None:
-                            has_default_pwd = bool(b.password)
-                except Exception:
-                    pass
-            if not has_default_pwd:
-                btn = QMessageBox.warning(
-                    self,
-                    "Пароль для sudo",
-                    "Глобальная настройка sudo включена, но в выбранной связке "
-                    "нет пароля (или связка не выбрана).\n\n"
-                    "Команды с sudo потребуют пароль на каждом хосте. Без пароля "
-                    "они не смогут выполниться.\n\n"
-                    "• «Указать связку» — вернуться в настройки.\n"
-                    "• «Сохранить как есть» — если на хостах sudo без пароля "
-                    "или для каждого хоста задана отдельная связка с паролем.",
-                    QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
-                    QMessageBox.StandardButton.Cancel,
-                )
-                if btn != QMessageBox.StandardButton.Save:
-                    self.bundle_selector.setFocus()
-                    return
 
         # Сохраняем новые настройки пинга
         config.app.network.ping_interval = self.ping_interval.value()

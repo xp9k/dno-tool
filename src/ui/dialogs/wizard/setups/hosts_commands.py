@@ -9,9 +9,8 @@ import os
 import tempfile
 from copy import deepcopy
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -59,13 +58,20 @@ SSH-ключу. Это получится, только если ключ это
 Хватит любого из двух.</p>
 
 <h3>Зачем нужен sudo</h3>
-<p>Для установки программ и служб нужны права администратора. Под root они есть
-сразу. Если вход идёт под обычной учётной записью (например, admin), программа
-выполняет такие команды через sudo, с паролем из той же связки.</p>
+<p>Для установки программ и служб, а потом и для команд из списка, питания и
+VNC нужны права администратора. Под root они есть сразу. Если вход идёт под
+обычной учётной записью (например, admin), программа выполняет команды через
+sudo с паролем из той же связки. Это происходит само, включать ничего не
+нужно.</p>
 <ul>
-<li>Колонка «Sudo» у компьютера: «Да» или «Нет» задают это явно.</li>
-<li>«По умолчанию» - решает галочка «Sudo» в блоке «Настройки входа по умолчанию».
-При выборе связки она ставится сама: для root снята, для остальных отмечена.</li>
+<li>У этой учётной записи на компьютере должны быть права sudo (группа wheel
+или sudo).</li>
+<li>Если sudo на компьютере работает без пароля (NOPASSWD), пароль в связке не
+нужен: хватит SSH-ключа.</li>
+<li>Колонка «Sudo»: «Авто» - обычное поведение, «Нет» - исключение для
+компьютера, где у учётной записи нет прав sudo. На таком компьютере программа
+ничего не установит. После мастера это же исключение задаётся в окне хоста
+галочкой «Не повышать права через sudo».</li>
 </ul>
 
 <h3>Частые случаи</h3>
@@ -73,7 +79,8 @@ SSH-ключу. Это получится, только если ключ это
 <li><b>На всех компьютерах одинаковый пароль root.</b> Создайте связку root,
 выберите её связкой по умолчанию. Колонки «Связка» и «Sudo» не трогайте.</li>
 <li><b>На всех компьютерах одна учётная запись администратора (не root).</b>
-То же самое, только связка с этой учётной записью, галочка «Sudo» отмечена.</li>
+То же самое, только связка с этой учётной записью. Колонку «Sudo» оставьте
+«Авто».</li>
 <li><b>На части компьютеров другой пароль.</b> Создайте для них отдельную связку
 и выберите её у этих компьютеров в колонке «Связка».</li>
 <li><b>Новые компьютеры с заводским образом</b> (войти можно только под
@@ -88,28 +95,27 @@ SSH-ключу. Это получится, только если ключ это
 <li><b>Подготовка</b> идёт под «Связкой для подключения» шага «Подготовка»
 (заводская учётная запись). Если там ничего не выбрано - под связкой компьютера
 из колонки «Связка», а если её нет, под связкой по умолчанию.
-Если вход не под root, sudo используется всегда.</li>
+Если вход не под root, подготовка идёт через sudo всегда, даже при «Нет» в
+колонке «Sudo».</li>
 <li><b>Всё остальное</b> программа ставит, уже входя под связкой по умолчанию.
-Другую связку можно выбрать на шаге «Подготовка» галочкой «Другая». sudo для этого
-этапа задаёт галочка «Использовать sudo» там же.</li>
+Другую связку можно выбрать на шаге «Подготовка» галочкой «Другая».</li>
 <li>Если подготовка на компьютере не удалась, остальное на нём не ставится.</li>
 </ul>
 
 <h3>Что сохранится после «Готово»</h3>
 <ul>
-<li>Связка и галочка sudo по умолчанию становятся общими настройками программы:
-дальше она входит на компьютеры так же, как описано выше.</li>
+<li>Связка по умолчанию становится общей настройкой программы: дальше она входит
+на компьютеры так же, как описано выше.</li>
 <li>Компьютеры сохраняются с теми значениями «Связка» и «Sudo», что в таблице.</li>
 <li>Исключение - компьютеры, где подготовка прошла успешно: их прежняя связка
-заменяется той, под которой ставилось остальное.
+заменяется той, под которой ставилось остальное (значение «Sudo» не меняется).
 <ul>
 <li>Без галочки «Другая» в колонке «Связка» у них будет «(наследовать)».</li>
 <li>С «Другая» - выбранная там связка.</li>
 <li>Если отмечено ещё «Использовать эту связку в дальнейшем по умолчанию», она
 становится связкой по умолчанию, а у этих компьютеров будет «(наследовать)».</li>
 </ul>
-Если эта связка входит не под root, колонка «Sudo» у них получает значение
-галочки «Использовать sudo».</li>
+</li>
 </ul>
 """
 
@@ -153,37 +159,30 @@ class HostsPage(SetupPage):
             "создать и изменить."
         )
         self._bundle_selector.changed.connect(self._on_bundle_changed)
-        self._bundle_selector.picked.connect(self._on_bundle_picked)
         bundle_form.addRow("Связка (логин и пароль):", self._bundle_selector)
-        # Общая настройка sudo - пара к связке по умолчанию: значение
-        # «По умолчанию» в колонке «Sudo» означает её.
-        self._sudo_check = QCheckBox("Использовать для входа не под root", login_box)
-        self._sudo_check.setToolTip(
-            "Для хостов со значением «По умолчанию» в колонке «Sudo». Пароль sudo "
-            "берётся из связки хоста.\n"
-            "При выборе связки отмечается сама: вход не под root - отмечена, под "
-            "root - снята.\n"
-            "При входе под root не нужна. С выбранной «Подготовкой» вход не под "
-            "root на шаге «Установка» всегда идёт через sudo."
-        )
-        bundle_form.addRow("Sudo:", self._sudo_check)
         login_hint = QLabel(
-            "Для хостов со значениями «(наследовать)» в колонке «Связка» и "
-            "«По умолчанию» в колонке «Sudo».",
+            "Для хостов со значением «(наследовать)» в колонке «Связка». При входе "
+            "не под root права повышаются через sudo с паролем связки.",
             login_box,
         )
         login_hint.setWordWrap(True)
         login_hint.setStyleSheet("color: gray;")
         # Нижняя строка блока: пояснение, справка о связках в правом углу.
+        # Темовой тулбатон без подписи (как кнопка окна связок), квадрат высотой
+        # с обычную кнопку шага: мелкий значок терялся рядом с серым
+        # пояснением. Иконка - почти во всю высоту кнопки.
         help_row = QHBoxLayout()
         self._help_btn = QToolButton(login_box)
         set_themed_icon(self._help_btn, "menu_info")
-        self._help_btn.setAutoRaise(True)
+        height = QPushButton(_icon_from_key("menu_info"), "Логины и пароли").sizeHint().height()
+        self._help_btn.setFixedSize(height, height)
+        side = max(16, height - 6)
+        self._help_btn.setIconSize(QSize(side, side))
         self._help_btn.setToolTip("Логины и пароли: как программа входит на компьютеры")
         self._help_btn.setAccessibleName("Логины и пароли")
         self._help_btn.clicked.connect(self._show_credentials_help)
         help_row.addWidget(login_hint, 1)
-        help_row.addWidget(self._help_btn, 0, Qt.AlignmentFlag.AlignBottom)
+        help_row.addWidget(self._help_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         bundle_form.addRow(help_row)
         layout.addWidget(login_box)
 
@@ -222,12 +221,10 @@ class HostsPage(SetupPage):
     def on_enter(self, ctx) -> None:
         self._bundle_selector.refresh()
         self._bundle_selector.set_current_iid(ctx.default_bundle_iid or None)
-        self._sudo_check.setChecked(ctx.use_sudo)
         self._refresh_bundle_labels()
 
     def collect(self, ctx) -> None:
         ctx.default_bundle_iid = self._bundle_selector.current_iid() or ""
-        ctx.use_sudo = self._sudo_check.isChecked()
         ctx.hosts_data = normalize_tree(self.get_hosts_data(), "hosts")
 
     def set_data(self, data):
@@ -244,11 +241,7 @@ class HostsPage(SetupPage):
             None,
         ) if ctx.credentials is not None else None
         name = (bundle.description or bundle.login) if bundle else "не задана"
-        sudo = "да" if ctx.use_sudo else "нет"
-        text = (
-            f"<b>Хосты:</b> {n}; связка по умолчанию: {escape(name)}; "
-            f"sudo по умолчанию: {sudo}"
-        )
+        text = f"<b>Хосты:</b> {n}; связка по умолчанию: {escape(name)}"
         prepare = getattr(ctx, "prepare", None)
         if (
             ctx.services.get("prepare")
@@ -289,25 +282,6 @@ class HostsPage(SetupPage):
         # Сигнал приходит и после закрытия окна связок: подписи в колонке
         # могли устареть (переименование, удаление).
         self._refresh_bundle_labels()
-
-    def _on_bundle_picked(self, iid) -> None:
-        """Выбор связки пользователем ставит галочку sudo по её логину.
-
-        Программная смена (вход на страницу, закрытие окна связок) сюда не
-        приходит: сохранённое значение галочки не перезаписывается.
-        """
-        if not iid:
-            return
-        try:
-            service = credential_service_for(self)
-            bundles = service.get_bundles() if service else []
-        except Exception:
-            bundles = []
-        bundle = next((b for b in bundles if b.get("iid") == iid), None)
-        if bundle is None:
-            return
-        login = (bundle.get("login") or "").strip()
-        self._sudo_check.setChecked(login not in ("", "root"))
 
     def _refresh_bundle_labels(self) -> None:
         # Связки мастера - черновик, а не рабочий CredentialService.

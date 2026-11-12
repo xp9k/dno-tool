@@ -719,10 +719,10 @@ class DiagnosticsWorker(BaseWorker):
             )
             if code3 == 0:
                 hint = (
-                    "Sudo с паролем работает. Включите «Использовать sudo» в настройках "
-                    "устройства или глобально для автоматической подачи пароля."
+                    "Sudo с паролем работает, но у хоста отмечено «Не повышать права "
+                    "через sudo»: команды выполняются без повышения прав."
                 )
-                if should_use_sudo(device):
+                if should_use_sudo(device, creds.username):
                     hint = "Sudo с паролем работает. Пароль будет подан автоматически."
                 self._emit(device, "ssh.sudo", ICON_WARN, "Пароль", hint)
                 return

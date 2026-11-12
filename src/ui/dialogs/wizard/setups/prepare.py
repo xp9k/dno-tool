@@ -186,9 +186,7 @@ class PrepareDevicesPage(SetupPage):
         )
         self._after_default.setToolTip(
             "При «Готово» эта связка станет связкой по умолчанию программы, "
-            "подготовленные хосты будут её наследовать (своя связка хоста снимается). "
-            "Если связка входит не под root, общая настройка sudo берёт значение "
-            "галочки «Использовать sudo».\n"
+            "подготовленные хосты будут её наследовать (своя связка хоста снимается).\n"
             "Подключение на шаге «Установка» это не меняет: до сохранения связка по "
             "умолчанию остаётся той, что выбрана на шаге «Хосты»."
         )
@@ -196,17 +194,6 @@ class PrepareDevicesPage(SetupPage):
         bundles_form.setRowVisible(self._after_default, False)
         # Выбор пользователя: галочка неактивна, если связка уже по умолчанию.
         self._after_default_wanted = False
-        # Под полем выбора связки «после», в колонке полей формы; видна, только
-        # если связка входит не под root (_update_after_sudo).
-        self._after_sudo = QCheckBox("Использовать sudo", bundles_box)
-        self._after_sudo.setChecked(True)
-        self._after_sudo.setToolTip(
-            "Остальные сервисы (SSH, пакеты, Veyon, VNC) ставятся под связкой после "
-            "подготовки через sudo. Пароль sudo - пароль этой связки.\n"
-            "При «Готово» подготовленные хосты получают такое же значение в колонке "
-            "«Sudo»."
-        )
-        bundles_form.addRow("", self._after_sudo)
         self._bundles_form = bundles_form
         layout.addWidget(bundles_box)
 
@@ -374,19 +361,16 @@ class PrepareDevicesPage(SetupPage):
         """Добавить строку; учётная запись связки «после» - готовой строкой.
 
         Пока её логина (не root) нет в таблице, «Добавить» вставляет его с
-        паролем связки и флажками: sudo - по галочке «Использовать sudo»,
-        «без пароля» - если в связке нет пароля (иначе sudo спросил бы
-        пароль, которого нет). Дальше - пустые строки.
+        паролем связки и флажками: sudo - всегда (остальные сервисы идут под
+        ней через sudo), «без пароля» - если в связке нет пароля (иначе sudo
+        спросил бы пароль, которого нет). Дальше - пустые строки.
         """
         after = self._after_bundle()
         if after is not None:
             login = after.login or "root"
             present = {account.login for account in self._account_rows()}
             if login != "root" and login not in present:
-                admin = self._after_sudo.isChecked()
-                self._add_account(
-                    login, after.password or "", admin, admin and not after.password
-                )
+                self._add_account(login, after.password or "", True, not after.password)
                 return
         self._add_account()
 
@@ -588,7 +572,6 @@ class PrepareDevicesPage(SetupPage):
         ]
 
     def _on_after_changed(self, _iid) -> None:
-        self._update_after_sudo()
         self._update_after_default()
         self._rebuild_key_users()
 
@@ -618,15 +601,6 @@ class PrepareDevicesPage(SetupPage):
             self._after_default.setChecked(already or self._after_default_wanted)
         finally:
             self._after_default.blockSignals(False)
-
-    def _update_after_sudo(self) -> None:
-        """«Использовать sudo» видна, только если связка «после» не под root."""
-        login = (
-            self._bundle_login(self._ctx, self._after_iid())
-            if self._ctx is not None and self._ctx.credentials is not None
-            else ""
-        )
-        self._bundles_form.setRowVisible(self._after_sudo, bool(login) and login != "root")
 
     def _on_connect_changed(self, _iid) -> None:
         if self._ctx is not None:
@@ -713,7 +687,6 @@ class PrepareDevicesPage(SetupPage):
             selector.refresh()
         self._update_inherit_labels(ctx)
         self._update_revoke_label(self._connect_login(ctx))
-        self._update_after_sudo()
         self._update_after_default()
         self._rebuild_key_users()
         self._reload_keys()
@@ -741,7 +714,6 @@ class PrepareDevicesPage(SetupPage):
             ),
             after_bundle_iid=after_iid,
             revoke_admin=self._revoke_check.isChecked(),
-            after_use_sudo=self._after_sudo.isChecked(),
             # Уже связка по умолчанию - менять нечего.
             after_as_default=(
                 bool(after_iid)
@@ -785,13 +757,7 @@ class PrepareDevicesPage(SetupPage):
                 )
         after = bundles[ctx.prepare.after_bundle_iid or default_iid]
         after_login = after[0] or "root"
-        after_sudo = ctx.prepare.after_use_sudo and after_login != "root"
-        if after_login != "root" and not ctx.prepare.after_use_sudo:
-            warnings.append(
-                f"Остальные сервисы ставятся под «{after_login}» без sudo: установке "
-                "пакетов и служб нужны права root, без них она не пройдёт."
-            )
-        if ctx.prepare.revoke_admin and after_sudo and not any(
+        if ctx.prepare.revoke_admin and after_login != "root" and not any(
             a.login == after_login and a.admin for a in ctx.prepare.accounts
         ):
             who = self._connect_login(ctx) or "учётной записи входа"
@@ -810,7 +776,7 @@ class PrepareDevicesPage(SetupPage):
                     f"возможен только по ключу. Отметьте «{after_login}» в списке "
                     "учётных записей для ключей, если ключа на хостах ещё нет."
                 )
-            if after_sudo and not any(
+            if not any(
                 a.login == after_login and a.nopasswd for a in ctx.prepare.accounts
             ):
                 warnings.append(
@@ -863,7 +829,6 @@ class PrepareDevicesPage(SetupPage):
             + (f"права администратора у «{escape(who)}» отзываются; "
                if plan.revoke_admin else "")
             + f"связка после подготовки: «{escape(after)}»"
-            + ("" if plan.after_use_sudo else ", без sudo")
             + (", при «Готово» станет связкой по умолчанию"
                if plan.after_as_default else "")
         )

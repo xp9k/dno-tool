@@ -211,7 +211,7 @@ class DeviceInfoCollector:
         if self._cancel.is_set():
             return False
         creds = get_credentials(self.device)
-        use_sudo = should_use_sudo(self.device) and creds.username != "root"
+        use_sudo = should_use_sudo(self.device, creds.username)
         script = build_node_info_script(
             self.categories,
             request_id=self.snapshot.request_id,

@@ -59,7 +59,7 @@ NUM_COLUMNS = 5
 
 SUDO_DATAROLE = (
     Qt.ItemDataRole.UserRole + 4
-)  # Реальное значение use_sudo (None/True/False)
+)  # Исключение sudo хоста (None = авто, False = без sudo)
 
 BUNDLE_DATAROLE = (
     Qt.ItemDataRole.UserRole + 5
@@ -75,7 +75,9 @@ LOCAL_NODE_IID = "local"
 # Отображаемое имя локальной ноды.
 LOCAL_NODE_NAME = "Эта машина"
 
-_SUDO_LABELS = {None: "По умолчанию", True: "Да", False: "Нет"}
+# Исключение sudo: «Авто» - sudo при логине не root, «Нет» - хост без sudo.
+_SUDO_AUTO_LABEL = "Авто"
+_SUDO_LABELS = {None: _SUDO_AUTO_LABEL, False: "Нет"}
 _BUNDLE_INHERIT_LABEL = "(наследовать)"
 
 
@@ -103,9 +105,9 @@ class PasswordDelegate(QStyledItemDelegate):
 
 
 class SudoDelegate(QStyledItemDelegate):
-    """Делегат для колонки «Sudo»: QComboBox с 3 пунктами (По умолчанию/Да/Нет).
+    """Делегат для колонки «Sudo»: QComboBox «Авто»/«Нет».
 
-    Хранит реальное значение (None/True/False) в SUDO_DATAROLE,
+    Хранит реальное значение (None/False) в SUDO_DATAROLE,
     отображает текст через _SUDO_LABELS.
     """
 
@@ -119,24 +121,25 @@ class SudoDelegate(QStyledItemDelegate):
         from PySide6.QtWidgets import QComboBox
 
         combo = QComboBox(parent)
-        combo.addItem("По умолчанию", None)
-        combo.addItem("Да", True)
-        combo.addItem("Нет", False)
+        combo.addItem(_SUDO_AUTO_LABEL, None)
+        combo.addItem(_SUDO_LABELS[False], False)
+        combo.setToolTip(
+            "Авто - при входе не под root команды выполняются через sudo.\n"
+            "Нет - хост не повышает права (учётка без прав sudo)."
+        )
         combo.setAutoFillBackground(True)
         return combo
 
     def setEditorData(self, editor, index):
         real = index.data(SUDO_DATAROLE)
-        # None → 0, True → 1, False → 2
-        idx = 0 if real is None else (1 if real else 2)
-        editor.setCurrentIndex(idx)
+        editor.setCurrentIndex(1 if real is False else 0)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
 
     def setModelData(self, editor, model, index):
-        value = editor.currentData()  # None/True/False
-        label = _SUDO_LABELS.get(value, "По умолчанию")
+        value = editor.currentData()  # None/False
+        label = _SUDO_LABELS.get(value, _SUDO_AUTO_LABEL)
         model.setData(index, value, SUDO_DATAROLE)
         model.setData(index, label, Qt.ItemDataRole.EditRole)
 
@@ -277,10 +280,10 @@ class CustomTreeItem(QStandardItem):
             bundle_item.setData(bundle_iid, BUNDLE_DATAROLE)
             bundle_item.setData(False, FOLDER_DATAROLE)
 
-            # Sudo — реальное значение (None/True/False) в SUDO_DATAROLE,
-            # отображается текстом через _SUDO_LABELS, редактируется QComboBox (SudoDelegate)
+            # Sudo - исключение (None/False) в SUDO_DATAROLE, отображается
+            # текстом через _SUDO_LABELS, редактируется QComboBox (SudoDelegate)
             sudo_value = self.device.use_sudo
-            sudo_item = QStandardItem(_SUDO_LABELS.get(sudo_value, "По умолчанию"))
+            sudo_item = QStandardItem(_SUDO_LABELS.get(sudo_value, _SUDO_AUTO_LABEL))
             sudo_item.setEditable(True)
             sudo_item.setData(sudo_value, SUDO_DATAROLE)
             sudo_item.setData(False, FOLDER_DATAROLE)
@@ -1147,7 +1150,7 @@ class DeviceTreeView(QTreeView):
             self._model.dataChanged.connect(self._on_column_edited)
             # Делегат для колонки «Связка» (QComboBox выбора связки)
             self.setItemDelegateForColumn(COL_BUNDLE, BundleDelegate(self))
-            # Делегат для колонки «Sudo» (QComboBox По умолчанию/Да/Нет)
+            # Делегат для колонки «Sudo» (QComboBox Авто/Нет)
             self.setItemDelegateForColumn(COL_SUDO, SudoDelegate(self))
 
         if self.enable_ping:
@@ -1203,10 +1206,10 @@ class DeviceTreeView(QTreeView):
             iid = cell_item.data(BUNDLE_DATAROLE)
             item0.device.credential_bundle_iid = iid if iid else None
         elif col == COL_SUDO:
-            # Для sudo: реальное значение (None/True/False) в SUDO_DATAROLE,
+            # Для sudo: исключение (None/False) в SUDO_DATAROLE,
             # установлено SudoDelegate.setModelData.
             real = cell_item.data(SUDO_DATAROLE)
-            item0.device.use_sudo = real
+            item0.device.use_sudo = False if real is False else None
         elif col == COL_MAC:
             item0.device.mac_address = value if value else None
 

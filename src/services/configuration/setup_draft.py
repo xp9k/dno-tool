@@ -66,13 +66,13 @@ def normalize_tree(items, kind):
     return result
 
 
-def apply_host_bundles(items, assignments, use_sudo):
+def apply_host_bundles(items, assignments):
     """Копия дерева хостов с назначенными связками.
 
     assignments - {iid хоста: iid связки}, пустой iid - наследовать глобальную
-    (своя связка записи снимается); use_sudo - {iid связки: bool | None} для
-    записей хостов (None - не менять). Хосты, которых в дереве уже нет,
-    пропускаются.
+    (своя связка записи снимается). Исключение sudo записи не меняется: при
+    входе не под root sudo используется и так. Хосты, которых в дереве уже
+    нет, пропускаются.
     """
     result = deepcopy(items)
 
@@ -82,11 +82,7 @@ def apply_host_bundles(items, assignments, use_sudo):
                 continue
             if "host" in node:
                 if node.get("iid") in assignments:
-                    bundle = assignments[node["iid"]] or None
-                    node["credential_bundle_iid"] = bundle
-                    sudo = use_sudo.get(bundle or "")
-                    if sudo is not None:
-                        node["use_sudo"] = sudo
+                    node["credential_bundle_iid"] = assignments[node["iid"]] or None
             elif len(node) == 1 and isinstance(next(iter(node.values())), list):
                 walk(next(iter(node.values())))
 

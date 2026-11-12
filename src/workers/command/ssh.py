@@ -370,7 +370,7 @@ class SSHWorker(BaseCommandExecutor):
         automatic_sudo = (
             self.desktop_context is None
             and _creds.username != "root"
-            and should_use_sudo(device)
+            and should_use_sudo(device, _creds.username)
             and has_sudo(command_text)
         )
         if automatic_sudo:

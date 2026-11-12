@@ -624,11 +624,9 @@ class SSHConfig:
     max_as_completed_timeout: int = (
         600  # Максимальный таймаут асинхронного выполнения (секунды)
     )
-    # При non-root логине выполнять весь обычный SSH-скрипт через sudo и Bash.
-    # Пароль берётся из связки учётных данных (per-host или глобальной).
-    # Перекрывается per-device через `DeviceModel.use_sudo`.
+    # Общей настройки sudo нет: при логине не root sudo используется всегда,
+    # исключение задаётся у хоста (`DeviceModel.use_sudo = False`).
     # См. src/workers/command/sudo_utils.py
-    use_sudo: bool = False
     # Локаль, экспортируемая перед выполнением SSH-команд (LANG/LC_ALL/LC_CTYPE).
     # По умолчанию `ru_RU.UTF-8` для обратной совместимости с ROSA Linux. Пустая строка —
     # не экспортировать локаль (для систем, где ru_RU.UTF-8 не сгенерирована, устраняет
@@ -1705,12 +1703,13 @@ class Config:
                     ]
                     if "ssh" in data:
                         # Устаревшие ключи username/password (legacy учётные данные,
-                        # теперь только связки) выбрасываются, чтобы SSHConfig(**…)
-                        # не упал на неизвестном поле.
+                        # теперь только связки) и use_sudo (sudo теперь всегда при
+                        # логине не root) выбрасываются, чтобы SSHConfig(**…) не упал
+                        # на неизвестном поле.
                         ssh_data = {
                             k: v
                             for k, v in dict(data["ssh"]).items()
-                            if k not in ("username", "password")
+                            if k not in ("username", "password", "use_sudo")
                         }
                         self.app.ssh = SSHConfig(**ssh_data)
                     if "network" in data:
