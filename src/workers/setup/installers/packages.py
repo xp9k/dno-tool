@@ -10,6 +10,7 @@ from src.workers.setup.types import (
     RESULT_ABORT,
 )
 from src.workers.setup.phases import PhasedInstaller, PhaseResult
+from src.workers.setup.packages import command_error
 
 
 class PackagesInstaller(PhasedInstaller):
@@ -21,15 +22,11 @@ class PackagesInstaller(PhasedInstaller):
     def _apply_install(self, device, ssh, run, write, append):
         self._install_packages(device, run)
 
-    def _check_repo_available(self, run_cmd, pkg_mgr, packages):
-        """Разделить пакеты на доступные в репо и отсутствующие.
-
-        Returns:
-            (available, unavailable) - оба в исходном порядке.
-        """
-        from src.workers.setup.packages import PackageManager
-
-        return PackageManager(run_cmd, self._local_abort, pkg_mgr).available(packages)
+    def _fail(self, device, svc, output_lines, message) -> None:
+        """Ошибка шага: причина в журнал установки и в отчёт хоста."""
+        output_lines.append(message)
+        self.context.log(device.host, svc, f"Ошибка: {message}")
+        self._report(device, svc, RESULT_ERROR, "\n".join(output_lines))
 
     def verify(self, request, applied):
         from src.workers.setup.packages import PackageManager
@@ -41,20 +38,36 @@ class PackagesInstaller(PhasedInstaller):
             if not manager.installed(p)
         ]
         if absent:
-            return PhaseResult(RESULT_ERROR, "Не установились: " + ", ".join(absent))
+            message = "Не установились: " + ", ".join(absent)
+            self.context.log(request.device.host, self.service, f"Ошибка: {message}")
+            return PhaseResult(RESULT_ERROR, message)
         return applied
 
-    def _post_install_packages(self, device, run_cmd, packages):
+    def _post_install_packages(
+        self, device, run_cmd, packages, output_lines, installed_now=()
+    ):
+        """Выполнить команды настройки пакетов.
+
+        Отказ - ошибка шага только для пакетов из ``installed_now`` (поставил
+        этот запуск). Пакет, стоявший раньше, обычно уже настроен (повторный
+        ``mos-auth-config enable`` отвечает «Уже настроено»): его отказ только
+        записывается в подробности.
+        """
         for package in packages:
             command = PACKAGE_POST_INSTALL.get(package)
             if command:
-                code, _, _ = run_cmd(command, timeout=60)
-                if code:
-                    self._report(
+                code, out, err = run_cmd(command, timeout=60)
+                if code and package not in installed_now:
+                    output_lines.append(
+                        f"{package}: {command} - {command_error(code, out, err, 60)}"
+                    )
+                elif code:
+                    self._fail(
                         device,
                         "packages",
-                        RESULT_ERROR,
-                        f"Не удалось настроить установленный пакет {package}",
+                        output_lines,
+                        f"Не удалось настроить установленный пакет {package}: "
+                        + command_error(code, out, err, 60),
                     )
                     return False
         return True
@@ -64,17 +77,18 @@ class PackagesInstaller(PhasedInstaller):
 
         Список пакетов ``self.parameters.extra_packages`` собирается мастером настройки
         (чекбоксы из ``EXTRA_PACKAGES`` + ручной ввод пользователя). Пакетный
-        менеджер определяется на хосте (dnf → apt-get); проверка наличия —
+        менеджер определяется на хосте (dnf -> apt-get); проверка наличия -
         ``rpm -q`` (dnf) или ``dpkg -s`` (apt). Пакеты, отсутствующие в
         репозитории, пропускаются с предупреждением (не фатально).
         Недостающие доступные устанавливаются одной командой
-        ``dnf/apt-get install -y``; при ее падении — добивка по одному пакету.
+        ``dnf/apt-get install -y``; при ее падении - добивка по одному пакету.
+        Причины отказов (хвост вывода dnf) идут и в отчёт, и в журнал установки.
         """
+        from src.workers.setup.packages import PackageManager, INSTALL_TIMEOUT_SEC
+
         svc = "packages"
         output_lines: List[str] = []
-
-        def log(msg: str):
-            output_lines.append(msg)
+        log = output_lines.append
 
         self.context.log(device.host, svc, "Начало установки пакетов")
 
@@ -86,20 +100,18 @@ class PackagesInstaller(PhasedInstaller):
         try:
             self._validate_package_names(packages)
         except ValueError:
-            self._report(device, svc, RESULT_ERROR, "Недопустимое имя пакета")
+            self._fail(device, svc, output_lines, "Недопустимое имя пакета")
             return
         if not packages:
             self.context.log(device.host, svc, "Пакеты не выбраны (пропуск)")
             self._report(device, svc, RESULT_IGNORE, "Пакеты не выбраны")
             return
 
-        from src.workers.setup.packages import PackageManager
-
         manager = PackageManager(run_cmd, self._local_abort)
         try:
             pkg_mgr = manager.detect()
         except RuntimeError as error:
-            self._report(device, svc, RESULT_ERROR, str(error))
+            self._fail(device, svc, output_lines, str(error))
             return
         log(f"Менеджер пакетов: {pkg_mgr}")
 
@@ -109,16 +121,14 @@ class PackagesInstaller(PhasedInstaller):
             if self._local_abort.is_set():
                 self._report(device, svc, RESULT_ABORT, "Прервано")
                 return
-            installed = manager.installed(pkg)
-            if installed:
+            if manager.installed(pkg):
                 log(f"{pkg} уже установлен")
             else:
                 missing.append(pkg)
 
         self._expected_packages = tuple(packages)
         if not missing:
-            if not self._post_install_packages(device, run_cmd, packages):
-                return
+            self._post_install_packages(device, run_cmd, packages, output_lines)
             self.context.log(device.host, svc, "Все пакеты уже установлены")
             self._report(device, svc, RESULT_IGNORE, "\n".join(output_lines))
             return
@@ -127,29 +137,22 @@ class PackagesInstaller(PhasedInstaller):
         # с предупреждением (не фатально), чтобы один неверный пакет не
         # ронял установку остальных.
         try:
-            available, unavailable = (
-                self._check_repo_available(run_cmd, pkg_mgr, missing)
-                if missing
-                else ([], [])
-            )
+            available, unavailable = manager.available(missing)
         except RuntimeError as error:
-            self._report(device, svc, RESULT_ERROR, str(error))
+            self._fail(device, svc, output_lines, str(error))
             return
+
         self._expected_packages = tuple(p for p in packages if p not in unavailable)
         for pkg in unavailable:
             log(f"{pkg} нет в репозитории - пропуск")
         if unavailable:
             self.context.log(
-                device.host,
-                svc,
-                f"Пакеты: нет в репозитории: {', '.join(unavailable)}",
+                device.host, svc, f"Нет в репозитории: {', '.join(unavailable)}"
             )
         missing = available
+        present = [p for p in packages if p not in unavailable]
         if not missing:
-            if not self._post_install_packages(
-                device, run_cmd, [p for p in packages if p not in unavailable]
-            ):
-                return
+            self._post_install_packages(device, run_cmd, present, output_lines)
             log("Нет пакетов для установки")
             self._report(device, svc, RESULT_IGNORE, "\n".join(output_lines))
             return
@@ -162,7 +165,8 @@ class PackagesInstaller(PhasedInstaller):
         if code != 0:
             # Добивка по одному пакету: изолировать виновника и поставить
             # то, что ставится.
-            log(f"Общая установка не удалась ({(err or out or '').strip()[:200]})")
+            reason = command_error(code, out, err, INSTALL_TIMEOUT_SEC)
+            log(f"Общая установка не удалась: {reason}")
             log("Пробую установить по одному пакету...")
             failed = []
             for pkg in list(missing):
@@ -171,22 +175,23 @@ class PackagesInstaller(PhasedInstaller):
                     return
                 icode, iout, ierr = manager.install((pkg,))
                 if icode != 0:
+                    reason = command_error(icode, iout, ierr, INSTALL_TIMEOUT_SEC)
                     failed.append(pkg)
-                    log(f"{pkg}: ошибка: {(ierr or iout or '').strip()[:200]}")
+                    log(f"{pkg}: ошибка: {reason}")
+                    self.context.log(device.host, svc, f"{pkg}: {reason}")
                 else:
                     log(f"{pkg}: установлен")
             if failed:
-                msg = f"Не установились: {', '.join(failed)}"
-                log(msg)
-                self.context.log(device.host, svc, f"Пакеты: {msg}")
-                self._report(device, svc, RESULT_ERROR, "\n".join(output_lines))
+                self._fail(
+                    device, svc, output_lines, f"Не установились: {', '.join(failed)}"
+                )
                 return
             log("Все пакеты установлены по одному")
 
         self.context.log(device.host, svc, f"Установлено: {', '.join(missing)}")
 
         if not self._post_install_packages(
-            device, run_cmd, [p for p in packages if p not in unavailable]
+            device, run_cmd, present, output_lines, installed_now=missing
         ):
             return
 
